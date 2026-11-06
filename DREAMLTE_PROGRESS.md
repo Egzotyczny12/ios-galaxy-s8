@@ -92,9 +92,12 @@ to the pmsg zone and read from TWRP as `/sys/fs/pstore/pmsg-ramoops-0`.
 
 ## Next
 
-1. CI kernel build; first boot target: loader log + XNU entry marker, then the
-   early XNU console on the S8 screen.
-2. UFS driver for the root filesystem (USERDATA), then the iPhone X root.
+1. Let the current test boot finish, then collect the `S8-MALI` PMU/CMU log
+   from pmsg after the phone returns to an ADB-accessible recovery. The Apple
+   logo report alone does not confirm full iOS startup.
+2. Use measured S8 power and clock state plus the S8/G71 register report to
+   design a separate opt-in power-up patch. Keep the existing known-bootable
+   path as fallback and do not transplant S9/Exynos9810 PMIC or clock values.
 
 ## 2026-11-06 — Mali-G71 discovery patch
 
@@ -113,4 +116,27 @@ to the pmsg zone and read from TWRP as `/sys/fs/pstore/pmsg-ramoops-0`.
   landing outside its function because the patch hunk lacked context. Patch
   0125 now anchors the opt-in call inside `a5xelte_touch_probe` and compiles
   the probe symbol for the A5XELTE machine config (the call itself remains
-  DREAMLTE-gated). A corrected XNU build and controlled TWRP test are pending.
+  DREAMLTE-gated).
+- Actions run `42299498637` built `kernel.development.a5xelte` successfully
+  (SHA-256 `26798c421dd541d477b6d38300ac0bc6d7ace6b78d2cb6f9bf0505c66cd00c08`);
+  all workflow steps passed. The automated whole-file LSE scan reports one
+  hit in symbol `K256`, but inspection shows that symbol is the SHA-256 round
+  constants at the start of `sha256_compress_arm64.o`'s `__text` section; the
+  executable function starts at offset `0x100` and contains no LSE mnemonic.
+- Built `s8-ios-mali-probe.img` with the local D22AP device tree and
+  `cpus=4`, `sweetfb_native=1`, `rd=ufsroot0`, `ufsroot=USERDATA` and
+  `mali_probe=1`. Image SHA-256:
+  `b77edac37d97e1476f808c6f387250d71e9e34c0a8f9fc09771bc871a31c525f`.
+  The boot arguments were read back from the packed payload. On 2026-11-06 the
+  image was written only to the verified SM-G950F BOOT partition `/dev/block/sda7`;
+  a 40 MiB pre-write BOOT backup is kept locally and must not be committed. The
+  first 17,684,496 bytes read back from BOOT have the exact image SHA-256 above.
+  The user reports that the phone reached the Apple logo after reboot. This is
+  a screen report only: full iOS boot and GPU acceleration are not yet verified.
+  ADB is currently disconnected while the phone boots; collect pmsg and the
+  `S8-MALI` probe output after it returns to a recovery with ADB.
+- Read-only GPU-port comparison: the S9+ project reports installed GLES through
+  Panfrost, but its Mali init sequence targets Exynos 9810/G72 and its PMIC,
+  clocks and power registers must not be transplanted to Exynos 8895/G71. The
+  XNU Mali probe is discovery only; no S8 GPU power-up, job submission, GLES
+  user client or accelerated compositor path has been implemented.

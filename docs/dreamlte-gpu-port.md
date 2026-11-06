@@ -49,7 +49,7 @@ Linux's Exynos 8895 device tree identifies the S8 Mali block at `0x13900000`; th
 4. Build a minimal Darwin/Panfrost transport and userspace GLES stack. Validate memory allocation, cache coherency, MMU mapping, interrupts and job completion before exposing it to applications.
 5. Add an off-screen GLES render check, retaining CPU rendering as fallback. Then adapt the existing `SweetSurface`/compositor path and profile the complete frame pipeline.
 
-The checkout includes the kernel archive and ordered patch workflow; the reconstructed XNU source tree is temporary build input. Patch 0125 is source-level and has not yet been built or run on the phone. No GPU job submission, GLES rendering, or acceleration has been implemented yet.
+The checkout includes the kernel archive and ordered patch workflow; the reconstructed XNU source tree is temporary build input. Patch 0125 and its caller built successfully in Actions run `42299498637`. The `mali_probe=1` diagnostic BOOT was flashed only to the verified S8 BOOT partition on 2026-11-06; a readback of the image-sized prefix matches SHA-256 `b77edac37d97e1476f808c6f387250d71e9e34c0a8f9fc09771bc871a31c525f`. The user reports seeing the Apple logo after reboot; complete iOS startup and the probe's PMU/CMU output are still pending. No GPU power-up, job submission, GLES user client, accelerated compositor, or runtime acceleration has been implemented.
 
 ## References
 

@@ -1,5 +1,21 @@
 # iOS 16 on sweet (Redmi Note 10 Pro, SM7150) - working notes
 
+## DREAMLTE handoff (2026-11-06)
+
+This is a separate Galaxy S8 report; the SWEET donor history below is unchanged.
+The `mali_probe=1` diagnostic BOOT was flashed to the verified S8 BOOT
+partition `/dev/block/sda7` after preserving a local pre-write BOOT backup.
+The image-sized BOOT readback matches SHA-256
+`b77edac37d97e1476f808c6f387250d71e9e34c0a8f9fc09771bc871a31c525f`. The user
+reports the screen reached the Apple logo after reboot; this does not yet prove
+full iOS startup. ADB is disconnected while it boots; collect pmsg and the
+`S8-MALI` PMU/CMU diagnostic after ADB returns. There is no Mali power-up,
+job-submission path, GLES client or GPU-accelerated rendering in the S8 kernel
+yet. The S9+ Panfrost/GLES code is an architectural reference only: its Exynos
+9810 power, clock and regulator sequence is not valid for the S8's Exynos 8895.
+See `DREAMLTE_PROGRESS.md` and `docs/dreamlte-gpu-port.md` for evidence and next
+steps. Keep the BOOT backup and phone dumps out of git.
+
 ## a5xelte fork handoff (2026-10-20)
 
 The Samsung SM-A510F branch has a separate dated record in `A5XELTE_PROGRESS.md` and a donor replacement map in `docs/a5xelte-migration-map.md`. Its 4 KiB XNU boots four Exynos7580 cores with SGI1 verified, mounts an iOS 16 HFSX root from USERDATA, and executes launchd, SpringBoard and backboardd. A graphical SpringBoard frame remains unverified. The latest recovered log confirms backboardd has its stock system-container XML entitlement, yet it crashes after receiving a missing container path; `lsd` also aborts in system-group container URL initialization. The HFS `RENAME_SWAP` fallback was SWEET-only despite A5XELTE usermanagerd reporting ENOTSUP for atomic keybag writes. Patch `0117` enables the existing fallback for A5XELTE, and its four-core BOOT image was written to p10; the runtime log is pending. Recovery and EFS remain untouched. The SWEET notes below are donor history, not Samsung device results.
