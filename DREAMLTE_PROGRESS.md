@@ -209,6 +209,11 @@ to the pmsg zone and read from TWRP as `/sys/fs/pstore/pmsg-ramoops-0`.
   `mali_probe=3` reads G71 core, tiler, memory, MMU, job-slot and raw interrupt
   feature registers only after the PMU says the domain is on and the GPU ID
   matches the LinuxS8-reported G71 product. Patch application was checked
-  against the output of 0125; this patch has not yet been CI-built or flashed.
+  against the output of 0125; GitHub Actions run `42311503465` is compiling it,
+  and it has not been flashed.
   It writes no MMIO and submits no jobs. This extends hardware discovery; it
   is not GPU acceleration.
+- The user now reports that iOS starts after the USERDATA reflash but is
+  extremely sluggish. This is not yet a GPU or RAM measurement; no accelerated
+  rendering or increased RAM capacity is confirmed. ADB absence is expected
+  after entering iOS and must not be used as a failure signal.

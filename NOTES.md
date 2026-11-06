@@ -12,11 +12,12 @@ at both ends of that range matched the SHA-256 of a zero-filled MiB. No GPT,
 BOOT, recovery, EFS or bootloader writes occurred in this USERDATA operation.
 The current diagnostic BOOT has a local 40-MiB backup at
 `backup/pre-userdata-reflash/BOOT.current.img` (SHA-256
-`9196ce9d3d79ed8763ef168fbf636aa9c3596adef6f924aecd04ec5bcd051618`). The
-reboot command was accepted and ADB disconnected. This is expected if iOS
-starts; no physical screen result has yet been reported, so boot success is
-unconfirmed. The interrupted local USERDATA prefix dump is incomplete and is
-not a usable backup; it is outside git.
+`9196ce9d3d79ed8763ef168fbf636aa9c3596adef6f924aecd04ec5bcd051618`). After
+the reflash and reboot, the user reports that iOS started but remains extremely
+sluggish. This is a physical runtime report; no GPU acceleration or RAM
+capacity change is confirmed. ADB is not expected once iOS is running. The
+interrupted local USERDATA prefix dump is incomplete and is not a usable
+backup; it is outside git.
 
 There is still no Mali power-up, job-submission path, GLES client or
 GPU-accelerated rendering in the S8 kernel. `ios-sweet` is the matching
@@ -25,9 +26,10 @@ Adreno/A6xx and cannot drive the S8 Mali-G71. The S9+ Panfrost/GLES service is
 the closest Mali reference, but its Exynos 9810 power/clock sequence is not
 valid for Exynos 8895. `mali_probe=1` BOOT was readback-verified previously;
 its PMU/CMU output is still pending. Added patch `0126` locally for a guarded,
-read-only `mali_probe=3` feature-register dump; it has passed patch-apply
-checking but is not built or flashed yet. A guarded `mali_probe=2` image and a
-2-GiB test image are prepared locally, not flashed. See `DREAMLTE_PROGRESS.md` and
+read-only `mali_probe=3` feature-register dump; it passed patch-apply checking
+and is in GitHub Actions run `42311503465` (build in progress), not yet flashed.
+A guarded `mali_probe=2` image and a 2-GiB test image are prepared locally, not
+flashed. See `DREAMLTE_PROGRESS.md` and
 `docs/dreamlte-gpu-port.md`. Keep images, backups and phone dumps out of git.
 
 ## a5xelte fork handoff (2026-10-20)
