@@ -28,6 +28,31 @@ Relevant pieces in that repository:
 
 The repository README and installed profile report hardware GLES testing on the S9+. I have not independently reproduced that result. The port's Metal-to-Vulkan work is separate and marked WIP; the installed path is GLES/Panfrost.
 
+## Other requested repositories
+
+I also checked current snapshots of `dipa-studio/ios-sweet` (`45263be`),
+`oosexgang/hakios-xnu-kernel` (`63fc2b4`) and standalone
+`oosexgang/hakios-metal` (`d36f329`). `ios-sweet` is the closest match for this
+port's XNU generation and framebuffer/IOSurface path, but it renders in
+software. Hakios XNU's GPU backend targets Qualcomm Adreno (the current
+configuration calls out Adreno 642L); Hakios Metal emits Adreno A6xx PM4
+commands. Those are not compatible with Mali-G71. Their IOKit user-client and
+Metal API designs may still inform higher layers, but S8 needs a new Mali
+backend. The standalone `hakios-metal` repository has since moved into
+`hakios-xnu-kernel/hakios-metal/`.
+
+For S8 the closest reusable GPU path remains S9+'s `HakiosMali` service and
+Mesa/Panfrost request transport. Its G72/Exynos9810 bring-up must be adapted
+for G71 and Exynos8895 power, clocks, interrupts, memory and cache behavior.
+The current safe experiment is the flashed `mali_probe=1` image. Its kernel
+log is needed before attempting writes to PMU or CMU registers. A separate
+`mali_probe=2` image is prepared but not flashed (SHA-256
+`b17a839c31030b9044b86e6452ceaa437eb6f081c51b0fa4ed80475ac7694cae`); it only
+reads G71 registers when the PMU already reports the domain on. After measured
+state is available, the next steps are a separate opt-in power/clock stage,
+GPU identity and minimal job validation, then the Panfrost user client and iOS
+rendering integration.
+
 ## What transfers and what does not
 
 | Component | Reuse potential on S8 |

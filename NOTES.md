@@ -11,10 +11,13 @@ reports the screen reached the Apple logo after reboot; this does not yet prove
 full iOS startup. ADB is disconnected while it boots; collect pmsg and the
 `S8-MALI` PMU/CMU diagnostic after ADB returns. There is no Mali power-up,
 job-submission path, GLES client or GPU-accelerated rendering in the S8 kernel
-yet. The S9+ Panfrost/GLES code is an architectural reference only: its Exynos
-9810 power, clock and regulator sequence is not valid for the S8's Exynos 8895.
-See `DREAMLTE_PROGRESS.md` and `docs/dreamlte-gpu-port.md` for evidence and next
-steps. Keep the BOOT backup and phone dumps out of git.
+yet. `ios-sweet` is the matching XNU/framebuffer base but uses software
+rendering; Hakios XNU/Metal target Adreno/A6xx and cannot drive the S8 Mali-G71.
+The S9+ Panfrost/GLES service is the closest Mali reference, but its Exynos 9810
+power/clock sequence is not valid for Exynos 8895. A second image with guarded
+`mali_probe=2` is prepared locally, pending pmsg from this boot. See
+`DREAMLTE_PROGRESS.md` and `docs/dreamlte-gpu-port.md`. Keep images, backups and
+phone dumps out of git.
 
 ## a5xelte fork handoff (2026-10-20)
 

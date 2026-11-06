@@ -138,5 +138,13 @@ to the pmsg zone and read from TWRP as `/sys/fs/pstore/pmsg-ramoops-0`.
 - Read-only GPU-port comparison: the S9+ project reports installed GLES through
   Panfrost, but its Mali init sequence targets Exynos 9810/G72 and its PMIC,
   clocks and power registers must not be transplanted to Exynos 8895/G71. The
-  XNU Mali probe is discovery only; no S8 GPU power-up, job submission, GLES
-  user client or accelerated compositor path has been implemented.
+  requested `ios-sweet` snapshot is the closest XNU/framebuffer base but uses
+  software rendering. `hakios-xnu-kernel` and `hakios-metal` target Adreno/A6xx
+  (PM4), not Mali; their IOKit/API patterns may help, but they are not GPU
+  backends for this device. The XNU Mali probe is discovery only; no S8 GPU
+  power-up, job submission, GLES user client or accelerated compositor path has
+  been implemented.
+- Prepared, but did not flash, a second controlled image with `mali_probe=2`
+  (SHA-256 `b17a839c31030b9044b86e6452ceaa437eb6f081c51b0fa4ed80475ac7694cae`)
+  to read G71 identity/features only if the next level-1 result shows G3D is
+  already fully powered. It is staged at `/tmp/s8-ios-mali-id-probe.img`.
