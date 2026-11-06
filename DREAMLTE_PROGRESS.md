@@ -205,3 +205,10 @@ to the pmsg zone and read from TWRP as `/sys/fs/pstore/pmsg-ramoops-0`.
   TWRP to retrieve ramoops. Keep the current BOOT as the known rollback point.
   No GPU acceleration has been implemented or verified; resume guarded Mali
   discovery before any power/clock or job-submission work.
+- Added `xnu/patches/0126-dreamlte-mali-feature-probe.patch`: opt-in
+  `mali_probe=3` reads G71 core, tiler, memory, MMU, job-slot and raw interrupt
+  feature registers only after the PMU says the domain is on and the GPU ID
+  matches the LinuxS8-reported G71 product. Patch application was checked
+  against the output of 0125; this patch has not yet been CI-built or flashed.
+  It writes no MMIO and submits no jobs. This extends hardware discovery; it
+  is not GPU acceleration.

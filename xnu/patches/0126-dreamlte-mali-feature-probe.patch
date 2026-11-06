@@ -1,0 +1,56 @@
+diff --git a/bsd/dev/dreamlte_mali_probe.c b/bsd/dev/dreamlte_mali_probe.c
+--- a/bsd/dev/dreamlte_mali_probe.c
++++ b/bsd/dev/dreamlte_mali_probe.c
+@@ -24,6 +24,13 @@
+ #define S8_G3D_L2_FEATURES  0x0004u
+ #define S8_G3D_AS_PRESENT   0x0018u
+ #define S8_G3D_SHADER       0x1000u
++#define S8_G3D_CORE_FEATURES 0x0008u
++#define S8_G3D_TILER_FEATURES 0x000cu
++#define S8_G3D_MEM_FEATURES  0x0010u
++#define S8_G3D_MMU_FEATURES  0x0014u
++#define S8_G3D_JS_PRESENT    0x001cu
++#define S8_G3D_INT_RAWSTAT   0x0020u
++#define S8_G3D_G71_ID        0x60a0u
+ 
+ static uint32_t
+ s8g3d_read(vm_offset_t base, uint32_t offset)
+@@ -43,8 +50,8 @@
+ 	if (level == 0) {
+ 		return;
+ 	}
+-	if (level > 2) {
+-		printf("S8-MALI: mali_probe accepts 1 (power/clock) or 2 (read G71 identity)\n");
++	if (level > 3) {
++		printf("S8-MALI: mali_probe accepts 1 (PMU/clock read), 2 (identity), or 3 (feature registers)\n");
+ 		return;
+ 	}
+ 
+@@ -74,10 +81,26 @@
+ 		printf("S8-MALI: GPU MMIO map failed\n");
+ 		return;
+ 	}
++	uint32_t gpu_id = s8g3d_read(gpu, S8_G3D_GPU_ID);
+ 	printf("S8-MALI: id=%#x l2=%#x as=%#x shader_present=%#x\n",
+-	    s8g3d_read(gpu, S8_G3D_GPU_ID),
++	    gpu_id,
+ 	    s8g3d_read(gpu, S8_G3D_L2_FEATURES),
+ 	    s8g3d_read(gpu, S8_G3D_AS_PRESENT),
+ 	    s8g3d_read(gpu, S8_G3D_SHADER));
++	if (level < 3) {
++		return;
++	}
++	if ((gpu_id >> 16) != S8_G3D_G71_ID) {
++		printf("S8-MALI: feature dump skipped; unexpected GPU_ID %#x (expected G71 %#x)\n",
++		    gpu_id, S8_G3D_G71_ID << 16);
++		return;
++	}
++	printf("S8-MALI: features core=%#x tiler=%#x mem=%#x mmu=%#x js=%#x int_raw=%#x\n",
++	    s8g3d_read(gpu, S8_G3D_CORE_FEATURES),
++	    s8g3d_read(gpu, S8_G3D_TILER_FEATURES),
++	    s8g3d_read(gpu, S8_G3D_MEM_FEATURES),
++	    s8g3d_read(gpu, S8_G3D_MMU_FEATURES),
++	    s8g3d_read(gpu, S8_G3D_JS_PRESENT),
++	    s8g3d_read(gpu, S8_G3D_INT_RAWSTAT));
+ }
+ #endif /* ARM64_BOARD_CONFIG_A5XELTE */

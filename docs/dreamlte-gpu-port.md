@@ -12,7 +12,7 @@ The documented Linux setup requires the G3D power domain at PMU `0x16480000 + 0x
 
 ## First XNU checkpoint
 
-`xnu/patches/0125-dreamlte-mali-probe.patch` adds a DREAMLTE-only diagnostic hook. It is disabled unless `mali_probe=1` or `mali_probe=2` is supplied. Level 1 reads and logs the G3D PMU configuration/status and CMU switch-user register. Level 2 also reads GPU identity/features only if the power-domain status already reports fully on. It never enables power, changes a clock, touches GPU registers on the default boot path, installs interrupts, or submits GPU work. This is a safe discovery checkpoint, not acceleration.
+`xnu/patches/0125-dreamlte-mali-probe.patch` adds a DREAMLTE-only diagnostic hook. It is disabled unless `mali_probe=1` or `mali_probe=2` is supplied. Level 1 reads and logs the G3D PMU configuration/status and CMU switch-user register. Level 2 also reads GPU identity/features only if the power-domain status already reports fully on. The follow-up `0126-dreamlte-mali-feature-probe.patch` adds opt-in `mali_probe=3` reads for the G71 core, tiler, memory, MMU, job-slot and raw-interrupt feature registers, guarded by the observed G71 product ID. Neither patch enables power, changes a clock, touches GPU registers on the default boot path, installs interrupts, or submits GPU work. These are discovery checkpoints, not acceleration.
 
 ## Closest reference: Galaxy S9+ Exynos
 
@@ -70,8 +70,8 @@ The LinuxS8 report records successful G71 reads on this model: `GPU_ID=0x60a0000
 
 ## Safe implementation sequence
 
-1. Keep the current boot path unchanged; add no GPU register access to default boots. The optional XNU checkpoint is in `0125-dreamlte-mali-probe.patch`.
-2. On a future controlled boot, collect `mali_probe=1` first; only request `mali_probe=2` if the PMU reports the domain fully on. Compare identity/feature registers with the LinuxS8 evidence.
+1. Keep the current boot path unchanged; add no GPU register access to default boots. The optional XNU checkpoints are in patches `0125` and `0126`.
+2. On a controlled boot, collect `mali_probe=1` first; only request `mali_probe=2` if the PMU reports the domain fully on. Use `mali_probe=3` only after identity matches G71, then compare full feature registers with LinuxS8 evidence.
 3. Port a minimal Panfrost kernel interface for G71 behind a S8-only opt-in argument. Do not copy the S9 Exynos9810 power/voltage sequence.
 4. Build a minimal Darwin/Panfrost transport and userspace GLES stack. Validate memory allocation, cache coherency, MMU mapping, interrupts and job completion before exposing it to applications.
 5. Add an off-screen GLES render check, retaining CPU rendering as fallback. Then adapt the existing `SweetSurface`/compositor path and profile the complete frame pipeline.

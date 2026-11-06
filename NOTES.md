@@ -24,8 +24,10 @@ XNU/framebuffer base but uses software rendering; Hakios XNU/Metal target
 Adreno/A6xx and cannot drive the S8 Mali-G71. The S9+ Panfrost/GLES service is
 the closest Mali reference, but its Exynos 9810 power/clock sequence is not
 valid for Exynos 8895. `mali_probe=1` BOOT was readback-verified previously;
-its PMU/CMU output is still pending. A guarded `mali_probe=2` image and a 2-GiB
-test image are prepared locally, not flashed. See `DREAMLTE_PROGRESS.md` and
+its PMU/CMU output is still pending. Added patch `0126` locally for a guarded,
+read-only `mali_probe=3` feature-register dump; it has passed patch-apply
+checking but is not built or flashed yet. A guarded `mali_probe=2` image and a
+2-GiB test image are prepared locally, not flashed. See `DREAMLTE_PROGRESS.md` and
 `docs/dreamlte-gpu-port.md`. Keep images, backups and phone dumps out of git.
 
 ## a5xelte fork handoff (2026-10-20)
