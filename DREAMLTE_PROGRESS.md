@@ -95,3 +95,18 @@ to the pmsg zone and read from TWRP as `/sys/fs/pstore/pmsg-ramoops-0`.
 1. CI kernel build; first boot target: loader log + XNU entry marker, then the
    early XNU console on the S8 screen.
 2. UFS driver for the root filesystem (USERDATA), then the iPhone X root.
+
+## 2026-11-06 — Mali-G71 discovery patch
+
+- Same-device project LinuxS8 reports a working Panfrost/Mesa path on the
+  Exynos 8895 Mali-G71 MP20: GPU ID `0x60a00001`, shader mask `0x17771777`,
+  PMU G3D configuration at `0x164840e0`, CMU_G3D at `0x13800000`, and Mali
+  registers at `0x13900000`. These are upstream-project maintainer reports,
+  not measurements from this iOS port.
+- Added `xnu/patches/0125-dreamlte-mali-probe.patch`, a DREAMLTE-only,
+  boot-argument-gated, read-only register probe. Default boots do not touch
+  the GPU; `mali_probe=2` reads Mali registers only when PMU already reports
+  the G3D domain fully on. This does not enable GPU rendering.
+- Updated the kernel workflow to the currently available `macos-15` hosted
+  runner; the old macOS 13/14 runner labels are retired. XNU build and phone
+  boot results are pending the Actions run and a controlled TWRP test.

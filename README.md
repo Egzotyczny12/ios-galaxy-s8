@@ -29,7 +29,7 @@ This project ports Apple's open-source XNU kernel (xnu-8796, the iOS 16 generati
 - The Mongoose (big) cluster does not start yet: its L2/cluster power must be enabled.
 - No battery / charging readout (no fuel gauge driver).
 - No Wi-Fi, Bluetooth, cellular, audio, cameras, sensors, GPS or SEP / Face ID.
-- **No GPU.** The Mali-G71 cannot run iOS's Metal / AGX drivers, so hardware graphics is not realistic.
+- **GPU acceleration is not implemented yet.** The S8's Mali-G71 has a reported working Panfrost path under Linux; this port still needs an XNU job/MMU driver and iOS GLES integration. Apple's AGX driver is for Apple GPUs.
 - Security is off: permissive AMFI/sandbox, stub AppleKeyStore. Do not put anything personal on it.
 
 ## Roadmap
@@ -42,6 +42,7 @@ This project ports Apple's open-source XNU kernel (xnu-8796, the iOS 16 generati
 - [x] RTC (date/time)
 - [ ] Battery stub or driver (MAX77865 fuel gauge)
 - [ ] More RAM (512 MiB of 4 GiB today)
+- [x] Confirm same-device Mali-G71/Panfrost evidence and add an opt-in XNU register discovery patch; job submission and GLES rendering remain unimplemented
 - [ ] Vibration motor, backlight brightness
 - [ ] Wi-Fi (BCM4361): a large job
 
