@@ -1,0 +1,85 @@
+diff --git a/bsd/dev/dreamlte_mali_probe.c b/bsd/dev/dreamlte_mali_probe.c
+--- a/bsd/dev/dreamlte_mali_probe.c
++++ b/bsd/dev/dreamlte_mali_probe.c
+@@ -25,6 +25,7 @@
+ #define S8_G3D_AGPU_GATE    0x201cu
+ #define S8_TOP_PA           0x15a80000u
+ #define S8_TOP_SIZE         0x3000u
++#define S8_TOP_SHARED2_PLL  0x0160u
+ #define S8_TOP_G3D_DIV      0x1880u
+ #define S8_TOP_G3D_GATE     0x2088u
+ #define S8_G3D_GPU_PA       0x13900000u
+@@ -49,13 +50,62 @@
+ 	return value;
+ }
+ 
++static void
++s8g3d_write(vm_offset_t base, uint32_t offset, uint32_t value)
++{
++	__asm__ volatile("dmb oshst" ::: "memory");
++	*(volatile uint32_t *)(base + offset) = value;
++	__asm__ volatile("dsb oshst" ::: "memory");
++}
++
++/* First write-enabled milestone: explicit, low 200-MHz route through CMU_TOP. */
++static bool
++s8g3d_clock_200(vm_offset_t cmu, vm_offset_t top, uint32_t pd_status, uint32_t gpu_id)
++{
++	if ((pd_status & 0xfu) != 0xfu || (gpu_id >> 16) != S8_G3D_G71_ID) {
++		printf("S8-MALI: clock setup refused; G3D power/G71 identity guard failed\n");
++		return false;
++	}
++
++	/* Enable the CMU_TOP G3D switch source, then request its 200-MHz divider. */
++	uint32_t value = s8g3d_read(top, S8_TOP_G3D_GATE);
++	s8g3d_write(top, S8_TOP_G3D_GATE, value | (1u << 21));
++	value = s8g3d_read(top, S8_TOP_G3D_DIV);
++	s8g3d_write(top, S8_TOP_G3D_DIV, (value & ~7u) | 3u); /* 800-MHz source / 4 */
++
++	/* Route the G3D bus through the CMU_TOP switch and enable AGPU last. */
++	value = s8g3d_read(cmu, S8_G3D_SWITCH_USER);
++	s8g3d_write(cmu, S8_G3D_SWITCH_USER, value | (1u << 4));
++	value = s8g3d_read(cmu, S8_G3D_BUS_MUX);
++	s8g3d_write(cmu, S8_G3D_BUS_MUX, value | 1u);
++	value = s8g3d_read(cmu, S8_G3D_BUS_DIV);
++	s8g3d_write(cmu, S8_G3D_BUS_DIV, (value & ~7u) | 3u);
++	value = s8g3d_read(cmu, S8_G3D_AGPU_GATE);
++	s8g3d_write(cmu, S8_G3D_AGPU_GATE, value | (1u << 21));
++
++	uint32_t shared2_pll = s8g3d_read(top, S8_TOP_SHARED2_PLL);
++	uint32_t top_div = s8g3d_read(top, S8_TOP_G3D_DIV);
++	uint32_t top_gate = s8g3d_read(top, S8_TOP_G3D_GATE);
++	uint32_t switch_user = s8g3d_read(cmu, S8_G3D_SWITCH_USER);
++	uint32_t bus_mux = s8g3d_read(cmu, S8_G3D_BUS_MUX);
++	uint32_t bus_div = s8g3d_read(cmu, S8_G3D_BUS_DIV);
++	uint32_t agpu_gate = s8g3d_read(cmu, S8_G3D_AGPU_GATE);
++	bool ok = (top_div & 7u) == 3u && (top_gate & (1u << 21)) != 0 &&
++	    (switch_user & (1u << 4)) != 0 && (bus_mux & 1u) != 0 &&
++	    (bus_div & 7u) == 3u && (agpu_gate & (1u << 21)) != 0;
++	printf("S8-MALI: 200MHz clock config %s: shared2_pll=%#x top_div=%#x top_gate=%#x switch=%#x bus_mux=%#x bus_div=%#x agpu_gate=%#x\n",
++	    ok ? "readback matches" : "readback mismatch", shared2_pll, top_div, top_gate, switch_user, bus_mux, bus_div, agpu_gate);
++	return ok;
++}
++
+ void
+ dreamlte_mali_probe(void)
+ {
+-	uint32_t level = 0;
++	uint32_t level = 0, clock_200 = 0;
+ 	vm_offset_t pmu, cmu, top, gpu;
+ 
+ 	(void)PE_parse_boot_argn("mali_probe", &level, sizeof(level));
++	(void)PE_parse_boot_argn("mali_clock", &clock_200, sizeof(clock_200));
+ 	if (level == 0) {
+ 		return;
+ 	}
+@@ -106,6 +156,9 @@
+ 	    s8g3d_read(gpu, S8_G3D_L2_FEATURES),
+ 	    s8g3d_read(gpu, S8_G3D_AS_PRESENT),
+ 	    s8g3d_read(gpu, S8_G3D_SHADER));
++	if (clock_200 == 200) {
++		(void)s8g3d_clock_200(cmu, top, pd_status, gpu_id);
++	}
+ 	if (level < 3) {
+ 		return;
+ 	}

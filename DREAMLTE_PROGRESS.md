@@ -231,3 +231,16 @@ to the pmsg zone and read from TWRP as `/sys/fs/pstore/pmsg-ramoops-0`.
   `/tmp/s8-ios-mali-clock-probe.img`, SHA-256
   `637d069acbce14bec4a6ddcd0dc15c14a271ca4899dcac16f49480062e194e82`.
   No XNU clock state or GPU acceleration is claimed yet.
+- Added patch 0128, opt-in `mali_clock=200`: if and only if PMU status says G3D
+  is on and the measured GPU product ID is G71, it enables the CMU_TOP switch
+  path at 200 MHz, selects it for G3D, enables the AGPU gate and verifies
+  readback. With the argument absent it performs no writes. LinuxS8 reports
+  this switch route as its first working frequency; this is not yet measured
+  in the iOS kernel. Patches 0125–0128 pass ordered patch-apply checks; 0128
+  awaits CI and has not been flashed or run on the phone.
+- User returned the phone to TWRP. Confirmed root ADB, `dreamlte`, BOOT
+  `/dev/block/sda7` (40 MiB), USERDATA `/dev/block/sda24`. Read back all 40 MiB
+  of current BOOT; it exactly matches
+  `backup/pre-userdata-reflash/BOOT.current.img` (SHA-256
+  `9196ce9d3d79ed8763ef168fbf636aa9c3596adef6f924aecd04ec5bcd051618`),
+  preserving a verified rollback image before the next BOOT trial.

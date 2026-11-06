@@ -34,8 +34,12 @@ The unflashed combined probe image is `/tmp/s8-ios-mali-clock-probe.img`
 (SHA-256 `637d069acbce14bec4a6ddcd0dc15c14a271ca4899dcac16f49480062e194e82`).
 LinuxS8's initially working switch clock was 200 MHz, then its later validated
 configuration raised it to 400 MHz; neither rate is confirmed in this XNU boot.
-A guarded `mali_probe=2` image and a 2-GiB test image are prepared locally, not
-flashed. See `DREAMLTE_PROGRESS.md` and
+Patch `0128` adds an opt-in `mali_clock=200` setting guarded by PMU-on and
+G71-ID checks, with clock readback. It has passed ordered patch-application
+checks and is queued for CI; no clock writes have run on the phone yet. The
+user returned the phone to TWRP. A full 40-MiB readback of `/dev/block/sda7`
+matches the saved `BOOT.current.img` exactly, preserving rollback. The 2-GiB
+test image is prepared locally, not flashed. See `DREAMLTE_PROGRESS.md` and
 `docs/dreamlte-gpu-port.md`. Keep images, backups and phone dumps out of git.
 
 ## a5xelte fork handoff (2026-10-20)
