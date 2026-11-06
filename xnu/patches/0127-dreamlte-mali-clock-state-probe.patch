@@ -1,0 +1,59 @@
+diff --git a/bsd/dev/dreamlte_mali_probe.c b/bsd/dev/dreamlte_mali_probe.c
+--- a/bsd/dev/dreamlte_mali_probe.c
++++ b/bsd/dev/dreamlte_mali_probe.c
+@@ -16,8 +16,17 @@
+ #define S8_G3D_PD_CONFIG    0x40e0u
+ #define S8_G3D_PD_STATUS    0x40e4u
+ #define S8_G3D_CMU_PA       0x13800000u
+-#define S8_G3D_CMU_SIZE     0x2000u
++#define S8_G3D_CMU_SIZE     0x8000u
+ #define S8_G3D_SWITCH_USER  0x0100u
++#define S8_G3D_PLL_CON0     0x0140u
++#define S8_G3D_PLL_CON2     0x0148u
++#define S8_G3D_BUS_MUX      0x1000u
++#define S8_G3D_BUS_DIV      0x1804u
++#define S8_G3D_AGPU_GATE    0x201cu
++#define S8_TOP_PA           0x15a80000u
++#define S8_TOP_SIZE         0x3000u
++#define S8_TOP_G3D_DIV      0x1880u
++#define S8_TOP_G3D_GATE     0x2088u
+ #define S8_G3D_GPU_PA       0x13900000u
+ #define S8_G3D_GPU_SIZE     0x5000u
+ #define S8_G3D_GPU_ID       0x0000u
+@@ -44,7 +53,7 @@
+ dreamlte_mali_probe(void)
+ {
+ 	uint32_t level = 0;
+-	vm_offset_t pmu, cmu, gpu;
++	vm_offset_t pmu, cmu, top, gpu;
+ 
+ 	(void)PE_parse_boot_argn("mali_probe", &level, sizeof(level));
+ 	if (level == 0) {
+@@ -57,7 +66,8 @@
+ 
+ 	pmu = ml_io_map(S8_G3D_PMU_PA, S8_G3D_PMU_SIZE);
+ 	cmu = ml_io_map(S8_G3D_CMU_PA, S8_G3D_CMU_SIZE);
+-	if (pmu == 0 || cmu == 0) {
++	top = ml_io_map(S8_TOP_PA, S8_TOP_SIZE);
++	if (pmu == 0 || cmu == 0 || top == 0) {
+ 		printf("S8-MALI: MMIO map failed; no GPU access attempted\n");
+ 		return;
+ 	}
+@@ -65,8 +75,17 @@
+ 	uint32_t pd_config = s8g3d_read(pmu, S8_G3D_PD_CONFIG);
+ 	uint32_t pd_status = s8g3d_read(pmu, S8_G3D_PD_STATUS);
+ 	uint32_t switch_user = s8g3d_read(cmu, S8_G3D_SWITCH_USER);
++	uint32_t pll_con0 = s8g3d_read(cmu, S8_G3D_PLL_CON0);
++	uint32_t pll_con2 = s8g3d_read(cmu, S8_G3D_PLL_CON2);
++	uint32_t bus_mux = s8g3d_read(cmu, S8_G3D_BUS_MUX);
++	uint32_t bus_div = s8g3d_read(cmu, S8_G3D_BUS_DIV);
++	uint32_t agpu_gate = s8g3d_read(cmu, S8_G3D_AGPU_GATE);
++	uint32_t top_div = s8g3d_read(top, S8_TOP_G3D_DIV);
++	uint32_t top_gate = s8g3d_read(top, S8_TOP_G3D_GATE);
+ 	printf("S8-MALI: read-only probe level=%u pd_cfg=%#x pd_status=%#x switch_user=%#x\n",
+ 	    level, pd_config, pd_status, switch_user);
++	printf("S8-MALI: clocks top_g3d_div=%#x top_g3d_gate=%#x pll_con0=%#x pll_con2=%#x bus_mux=%#x bus_div=%#x agpu_gate=%#x\n",
++	    top_div, top_gate, pll_con0, pll_con2, bus_mux, bus_div, agpu_gate);
+ 	if (level < 2) {
+ 		return;
+ 	}

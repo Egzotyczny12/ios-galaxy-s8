@@ -25,11 +25,15 @@ XNU/framebuffer base but uses software rendering; Hakios XNU/Metal target
 Adreno/A6xx and cannot drive the S8 Mali-G71. The S9+ Panfrost/GLES service is
 the closest Mali reference, but its Exynos 9810 power/clock sequence is not
 valid for Exynos 8895. `mali_probe=1` BOOT was readback-verified previously;
-its PMU/CMU output is still pending. Added patch `0126` locally for a guarded,
-read-only `mali_probe=3` feature-register dump; it passed patch-apply checking
-and is in GitHub Actions run `42311503465` (build in progress), not yet flashed.
-A guarded `mali_probe=2` image and a 2-GiB test image are prepared locally, not
-flashed. See `DREAMLTE_PROGRESS.md` and
+its PMU/CMU output is still pending. Patch `0126` adds the guarded read-only
+`mali_probe=3` feature-register dump; CI run `42311503465` passed. Its
+unflashed BOOT image is `/tmp/s8-ios-mali-feature-probe.img` (SHA-256
+`1aee93ec149a6cb5214cddcca59c536132e3c590e3968d90f48627c05142ca41`). Patch
+`0127` adds read-only CMU_TOP/CMU_G3D clock state; it passes patch-apply checks
+but is not CI-built yet. LinuxS8's initially working switch clock was 200 MHz,
+then its later validated configuration raised it to 400 MHz; neither rate is
+confirmed in this XNU boot. A guarded `mali_probe=2` image and a 2-GiB test
+image are prepared locally, not flashed. See `DREAMLTE_PROGRESS.md` and
 `docs/dreamlte-gpu-port.md`. Keep images, backups and phone dumps out of git.
 
 ## a5xelte fork handoff (2026-10-20)

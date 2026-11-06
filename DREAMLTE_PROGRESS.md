@@ -217,3 +217,14 @@ to the pmsg zone and read from TWRP as `/sys/fs/pstore/pmsg-ramoops-0`.
   extremely sluggish. This is not yet a GPU or RAM measurement; no accelerated
   rendering or increased RAM capacity is confirmed. ADB absence is expected
   after entering iOS and must not be used as a failure signal.
+- Patch 0126 passed GitHub Actions run `42311503465` (the complete XNU build
+  and A53 LSE scan succeeded). Built, but did not flash,
+  `/tmp/s8-ios-mali-feature-probe.img` from that artifact using the documented
+  S8 boot arguments plus `mali_probe=3`; SHA-256
+  `1aee93ec149a6cb5214cddcca59c536132e3c590e3968d90f48627c05142ca41`.
+- LinuxS8's history records a 200-MHz CMU_TOP switch-clock bring-up, followed
+  by a later 400-MHz configuration; its PLL path did not lock. This is
+  device-specific Linux evidence only. Added local patch 0127 to read CMU_TOP
+  divider/gate and CMU_G3D PLL/mux/divider/gate registers without writing
+  them. Patches 0125 -> 0126 -> 0127 apply in order; 0127 awaits CI and is not
+  in an image. No XNU clock state or GPU acceleration is claimed yet.
