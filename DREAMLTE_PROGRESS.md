@@ -179,3 +179,29 @@ to the pmsg zone and read from TWRP as `/sys/fs/pstore/pmsg-ramoops-0`.
   USERDATA HFS+ volume read-only; determine whether Bold Text can be reset
   without reflashing; then test the 2 GiB BOOT with rollback available. Once
   stable RAM is established, continue the measured Mali-G71 probe and driver.
+
+## 2026-11-07 — USERDATA reflash and tail clearing
+
+- The user explicitly authorized reflashing USERDATA after the Apple-logo
+  stall. In TWRP, `tools/dreamlte/flash-chunks.py` wrote `ios16-root.img` to
+  the resolved `/dev/block/sda24` (58,556,678,144 bytes). All 512 32-MiB
+  chunks passed SHA-256 readback; the HFSX volume-header bytes at offset 1024
+  read `HX`.
+- Zeroed 39,456 MiB beginning at offset 16 GiB and ran `sync`, preserving the
+  final 4 MiB for the XNU log ring. The sampled 1-MiB blocks at both ends of
+  the cleared range match SHA-256 of a zero-filled MiB. No GPT, BOOT, recovery,
+  EFS or bootloader partition was written during this operation.
+- Preserved the current 40-MiB diagnostic BOOT as
+  `backup/pre-userdata-reflash/BOOT.current.img` (SHA-256
+  `9196ce9d3d79ed8763ef168fbf636aa9c3596adef6f924aecd04ec5bcd051618`). A
+  read-only dump of USERDATA's first 2.7 GiB was interrupted before writing;
+  it is not a valid backup and remains outside git.
+- Issued `adb reboot`; ADB then disconnected. Since iOS does not provide ADB
+  by default, this only confirms the reboot request, not the boot result. The
+  physical screen result is pending from the user. Do not infer boot success
+  or failure from `adb devices` absence.
+- Next: collect the user's screen observation. If the UI boots, recover the
+  kernel pmsg through the existing log path when available; if it hangs, use
+  TWRP to retrieve ramoops. Keep the current BOOT as the known rollback point.
+  No GPU acceleration has been implemented or verified; resume guarded Mali
+  discovery before any power/clock or job-submission work.

@@ -1,26 +1,31 @@
 # iOS 16 on sweet (Redmi Note 10 Pro, SM7150) - working notes
 
-## DREAMLTE handoff (2026-11-06)
+## DREAMLTE handoff (2026-11-07, read first)
 
 This is a separate Galaxy S8 report; the SWEET donor history below is unchanged.
-The `mali_probe=1` diagnostic BOOT was flashed to the verified S8 BOOT
-partition `/dev/block/sda7` after preserving a local pre-write BOOT backup.
-The image-sized BOOT readback matches SHA-256
-`b77edac37d97e1476f808c6f387250d71e9e34c0a8f9fc09771bc871a31c525f`. The user
-reports the screen reached the Apple logo after reboot; this does not yet prove
-full iOS startup. ADB is disconnected while it boots; collect pmsg and the
-`S8-MALI` PMU/CMU diagnostic after ADB returns. There is no Mali power-up,
-job-submission path, GLES client or GPU-accelerated rendering in the S8 kernel
-yet. `ios-sweet` is the matching XNU/framebuffer base but uses software
-rendering; Hakios XNU/Metal target Adreno/A6xx and cannot drive the S8 Mali-G71.
-The S9+ Panfrost/GLES service is the closest Mali reference, but its Exynos 9810
-power/clock sequence is not valid for Exynos 8895. A second image with guarded
-`mali_probe=2` is prepared locally, pending pmsg from this boot. The user
-reports a respring after enabling Bold Text followed by the Apple logo; ADB and
-fastboot currently see no phone, and USERDATA has not been overwritten. A
-separate 2 GiB image is staged but unflashed (SHA-256
-`3d0759daad297f5901d54867c055fe058fb7e1d53676f6e5ab6e3360c295266a`); the
-builder still defaults to 512 MiB. See `DREAMLTE_PROGRESS.md` and
+The user authorized reflashing USERDATA after iOS stalled at the Apple logo.
+From TWRP, `tools/dreamlte/flash-chunks.py` wrote `ios16-root.img` to the
+verified `/dev/block/sda24`: all 512 32-MiB chunks passed SHA-256 readback.
+The readback HFSX volume signature is `HX`. The 39,456-MiB tail was zeroed,
+excluding the final 4 MiB reserved for the XNU log ring; sampled zero blocks
+at both ends of that range matched the SHA-256 of a zero-filled MiB. No GPT,
+BOOT, recovery, EFS or bootloader writes occurred in this USERDATA operation.
+The current diagnostic BOOT has a local 40-MiB backup at
+`backup/pre-userdata-reflash/BOOT.current.img` (SHA-256
+`9196ce9d3d79ed8763ef168fbf636aa9c3596adef6f924aecd04ec5bcd051618`). The
+reboot command was accepted and ADB disconnected. This is expected if iOS
+starts; no physical screen result has yet been reported, so boot success is
+unconfirmed. The interrupted local USERDATA prefix dump is incomplete and is
+not a usable backup; it is outside git.
+
+There is still no Mali power-up, job-submission path, GLES client or
+GPU-accelerated rendering in the S8 kernel. `ios-sweet` is the matching
+XNU/framebuffer base but uses software rendering; Hakios XNU/Metal target
+Adreno/A6xx and cannot drive the S8 Mali-G71. The S9+ Panfrost/GLES service is
+the closest Mali reference, but its Exynos 9810 power/clock sequence is not
+valid for Exynos 8895. `mali_probe=1` BOOT was readback-verified previously;
+its PMU/CMU output is still pending. A guarded `mali_probe=2` image and a 2-GiB
+test image are prepared locally, not flashed. See `DREAMLTE_PROGRESS.md` and
 `docs/dreamlte-gpu-port.md`. Keep images, backups and phone dumps out of git.
 
 ## a5xelte fork handoff (2026-10-20)
