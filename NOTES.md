@@ -29,11 +29,13 @@ its PMU/CMU output is still pending. Patch `0126` adds the guarded read-only
 `mali_probe=3` feature-register dump; CI run `42311503465` passed. Its
 unflashed BOOT image is `/tmp/s8-ios-mali-feature-probe.img` (SHA-256
 `1aee93ec149a6cb5214cddcca59c536132e3c590e3968d90f48627c05142ca41`). Patch
-`0127` adds read-only CMU_TOP/CMU_G3D clock state; it passes patch-apply checks
-but is not CI-built yet. LinuxS8's initially working switch clock was 200 MHz,
-then its later validated configuration raised it to 400 MHz; neither rate is
-confirmed in this XNU boot. A guarded `mali_probe=2` image and a 2-GiB test
-image are prepared locally, not flashed. See `DREAMLTE_PROGRESS.md` and
+`0127` adds read-only CMU_TOP/CMU_G3D clock state; CI run `42313291998` passed.
+The unflashed combined probe image is `/tmp/s8-ios-mali-clock-probe.img`
+(SHA-256 `637d069acbce14bec4a6ddcd0dc15c14a271ca4899dcac16f49480062e194e82`).
+LinuxS8's initially working switch clock was 200 MHz, then its later validated
+configuration raised it to 400 MHz; neither rate is confirmed in this XNU boot.
+A guarded `mali_probe=2` image and a 2-GiB test image are prepared locally, not
+flashed. See `DREAMLTE_PROGRESS.md` and
 `docs/dreamlte-gpu-port.md`. Keep images, backups and phone dumps out of git.
 
 ## a5xelte fork handoff (2026-10-20)

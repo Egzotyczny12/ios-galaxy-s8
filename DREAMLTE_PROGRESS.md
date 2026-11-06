@@ -226,5 +226,8 @@ to the pmsg zone and read from TWRP as `/sys/fs/pstore/pmsg-ramoops-0`.
   by a later 400-MHz configuration; its PLL path did not lock. This is
   device-specific Linux evidence only. Added local patch 0127 to read CMU_TOP
   divider/gate and CMU_G3D PLL/mux/divider/gate registers without writing
-  them. Patches 0125 -> 0126 -> 0127 apply in order; 0127 awaits CI and is not
-  in an image. No XNU clock state or GPU acceleration is claimed yet.
+  them. Patches 0125 -> 0126 -> 0127 apply in order; 0127 passed Actions run
+  `42313291998`. Its combined unflashed image is
+  `/tmp/s8-ios-mali-clock-probe.img`, SHA-256
+  `637d069acbce14bec4a6ddcd0dc15c14a271ca4899dcac16f49480062e194e82`.
+  No XNU clock state or GPU acceleration is claimed yet.
