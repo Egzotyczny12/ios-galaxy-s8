@@ -111,5 +111,6 @@ to the pmsg zone and read from TWRP as `/sys/fs/pstore/pmsg-ramoops-0`.
   runner; the old macOS 13/14 runner labels are retired. Actions run
   `42296572849` applied and compiled the new driver, but caught the hook
   landing outside its function because the patch hunk lacked context. Patch
-  0125 now anchors the opt-in call inside `a5xelte_touch_probe`; a corrected
-  XNU build and controlled TWRP test are pending.
+  0125 now anchors the opt-in call inside `a5xelte_touch_probe` and compiles
+  the probe symbol for the A5XELTE machine config (the call itself remains
+  DREAMLTE-gated). A corrected XNU build and controlled TWRP test are pending.

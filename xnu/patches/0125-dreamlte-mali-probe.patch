@@ -34,7 +34,7 @@ index ba647a8760c3b248b7acb872ececbd2ec39a313f..3e5f4d1329904a44f1dbccf025dcea71
  	int enabled = A5_TOUCH_DEFAULT; /* A5 touch: off on the S8 */
 diff --git a/bsd/dev/dreamlte_mali_probe.c b/bsd/dev/dreamlte_mali_probe.c
 new file mode 100644
-index 0000000000000000000000000000000000000000..3da60d8fc56fc9fa65d192b8c3932bb624a751d6
+index 0000000000000000000000000000000000000000..ab9a773a9de19c18a58f59d5bd064dc54faf519c
 --- /dev/null
 +++ b/bsd/dev/dreamlte_mali_probe.c
 @@ -0,0 +1,83 @@
@@ -43,7 +43,7 @@ index 0000000000000000000000000000000000000000..3da60d8fc56fc9fa65d192b8c3932bb6
 + * This is a diagnostic checkpoint only: it never powers the GPU, changes
 + * clocks, installs interrupts, or submits work.
 + */
-+#if defined(ARM64_BOARD_CONFIG_A5XELTE) && defined(DREAMLTE)
++#if defined(ARM64_BOARD_CONFIG_A5XELTE)
 +#include <sys/types.h>
 +#include <sys/systm.h>
 +#include <machine/machine_routines.h>
@@ -120,4 +120,4 @@ index 0000000000000000000000000000000000000000..3da60d8fc56fc9fa65d192b8c3932bb6
 +	    s8g3d_read(gpu, S8_G3D_AS_PRESENT),
 +	    s8g3d_read(gpu, S8_G3D_SHADER));
 +}
-+#endif /* ARM64_BOARD_CONFIG_A5XELTE && DREAMLTE */
++#endif /* ARM64_BOARD_CONFIG_A5XELTE */
