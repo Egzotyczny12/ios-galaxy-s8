@@ -108,5 +108,8 @@ to the pmsg zone and read from TWRP as `/sys/fs/pstore/pmsg-ramoops-0`.
   the GPU; `mali_probe=2` reads Mali registers only when PMU already reports
   the G3D domain fully on. This does not enable GPU rendering.
 - Updated the kernel workflow to the currently available `macos-15` hosted
-  runner; the old macOS 13/14 runner labels are retired. XNU build and phone
-  boot results are pending the Actions run and a controlled TWRP test.
+  runner; the old macOS 13/14 runner labels are retired. Actions run
+  `42296572849` applied and compiled the new driver, but caught the hook
+  landing outside its function because the patch hunk lacked context. Patch
+  0125 now anchors the opt-in call inside `a5xelte_touch_probe`; a corrected
+  XNU build and controlled TWRP test are pending.
