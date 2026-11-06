@@ -167,6 +167,11 @@ to the pmsg zone and read from TWRP as `/sys/fs/pstore/pmsg-ramoops-0`.
   and `mali_probe=1`: `s8-ios-2g-mali-diagnostic.img`, SHA-256
   `3d0759daad297f5901d54867c055fe058fb7e1d53676f6e5ab6e3360c295266a`.
   The payload and ADT both report base `0x880000000`, size `0x80000000`.
+- Also prepared a combined 2 GiB + guarded `mali_probe=2` image,
+  `s8-ios-2g-mali-id-diagnostic.img`, SHA-256
+  `33fb2728895af834c38f0a41e73d7be35028b7ae3ec49e4c40e234ccf3556890`.
+  It only reads GPU identity if the G3D power-status register already reports
+  the domain on; it does not enable power or alter clocks.
 - A previous 2 GiB trial panicked in `kmem_range_init`; it predates some later
   VM layout fixes, so this image can establish whether the current kernel now
   manages the full free bank. No runtime 2 GiB success is claimed yet.
