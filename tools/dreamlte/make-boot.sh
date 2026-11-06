@@ -15,7 +15,11 @@ mkdir -p "$work"
 # The ADT canvas must match the size the kernel presents (SweetFramebuffer).
 canvas=1125x2436
 [[ " $args " == *" sweetfb_native=1 "* ]] && canvas=1440x2960
-python3 "$repo/tools/mkadt_dreamlte.py" "$work/dreamlte.adt" --canvas "$canvas"
+adt_args=("$work/dreamlte.adt" --canvas "$canvas")
+if [[ -n ${DREAMLTE_DRAM_SIZE:-} ]]; then
+	adt_args+=(--dram-size "$DREAMLTE_DRAM_SIZE")
+fi
+python3 "$repo/tools/mkadt_dreamlte.py" "${adt_args[@]}"
 python3 "$repo/tools/mkpayload.py" "$kernel" "$work/dreamlte.adt" "$work/payload.bin" --cmdline "$args"
 bash "$repo/shim/dreamlte/build.sh" "$stock" "$work/payload.bin" "$out"
 python3 "$repo/tools/dreamlte_bootimg_info.py" "$out" | head -4

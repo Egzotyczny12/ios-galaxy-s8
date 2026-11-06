@@ -69,7 +69,7 @@ def cpu_node(logical):
     ]
 
 
-def build(canvas=(FB_W, FB_H)):
+def build(canvas=(FB_W, FB_H), dram_size=DRAM_SIZE):
     root = mkadt.build(seed=os.urandom(64), qemu=True)
     # The kernel's SweetPlatformExpert personality matches 'samsung,a5xelte'
     # (KernelConfigTables.cpp); without it IOKit panics "Unable to find driver
@@ -79,7 +79,7 @@ def build(canvas=(FB_W, FB_H)):
              mkadt.cstr('AppleARM'))
     chosen = child(root, 'chosen')
     set_prop(chosen, 'dram-base', mkadt.u64(DRAM_BASE))
-    set_prop(chosen, 'dram-size', mkadt.u64(DRAM_SIZE))
+    set_prop(chosen, 'dram-size', mkadt.u64(dram_size))
     set_prop(chosen, 'firmware-version', mkadt.cstr('dreamlte-entry'))
     set_prop(chosen, 'system-firmware-version', mkadt.cstr('dreamlte-entry'))
     cpus = child(root, 'cpus')
@@ -136,7 +136,11 @@ if __name__ == '__main__':
     parser.add_argument('output', type=Path)
     parser.add_argument('--canvas', default=f'{FB_W}x{FB_H}',
                         help='display size presented to iOS, WxH')
+    parser.add_argument('--dram-size', type=lambda v: int(v, 0), default=DRAM_SIZE,
+                        help='contiguous, firmware-free RAM exposed to XNU (bytes; default: 512 MiB)')
     args = parser.parse_args()
-    blob = adt.serialize(build(tuple(int(v) for v in args.canvas.split('x'))))
+    if args.dram_size <= 0 or args.dram_size > 0x80000000:
+        parser.error('--dram-size must be between 1 byte and the verified 2 GiB high bank')
+    blob = adt.serialize(build(tuple(int(v) for v in args.canvas.split('x')), args.dram_size))
     args.output.write_bytes(blob)
     print(f'{args.output}: {len(blob)} bytes')

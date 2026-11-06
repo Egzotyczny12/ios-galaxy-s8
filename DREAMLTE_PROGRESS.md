@@ -148,3 +148,29 @@ to the pmsg zone and read from TWRP as `/sys/fs/pstore/pmsg-ramoops-0`.
   (SHA-256 `b17a839c31030b9044b86e6452ceaa437eb6f081c51b0fa4ed80475ac7694cae`)
   to read G71 identity/features only if the next level-1 result shows G3D is
   already fully powered. It is staged at `/tmp/s8-ios-mali-id-probe.img`.
+
+## 2026-11-06 — recovery diagnosis and RAM expansion trial
+
+- User reports that enabling Bold Text caused a respring and the display then
+  stayed at the Apple logo. This is not yet evidence that USERDATA is damaged.
+  At this checkpoint `adb devices` and `fastboot devices` show no phone, so no
+  post-respring pmsg, filesystem check or live preference inspection is
+  available. USERDATA has not been rewritten.
+- The S8 has a measured firmware-free contiguous 2 GiB high bank at
+  `0x880000000..0x8ffffffff`; the current ADT exposes 512 MiB of that bank.
+  The remaining lower banks contain firmware carve-outs. The loader and XNU
+  boot arguments currently describe one contiguous `physBase/memSize` range,
+  so exposing all 4 GiB by enlarging that number would include reserved holes.
+- Added `--dram-size` to `tools/mkadt_dreamlte.py` and the optional
+  `DREAMLTE_DRAM_SIZE` override to `tools/dreamlte/make-boot.sh`; default stays
+  512 MiB. Built an unflashed 2 GiB diagnostic image using the current kernel
+  and `mali_probe=1`: `s8-ios-2g-mali-diagnostic.img`, SHA-256
+  `3d0759daad297f5901d54867c055fe058fb7e1d53676f6e5ab6e3360c295266a`.
+  The payload and ADT both report base `0x880000000`, size `0x80000000`.
+- A previous 2 GiB trial panicked in `kmem_range_init`; it predates some later
+  VM layout fixes, so this image can establish whether the current kernel now
+  manages the full free bank. No runtime 2 GiB success is claimed yet.
+- Next when the phone is back in TWRP/ADB: save pmsg and inspect the current
+  USERDATA HFS+ volume read-only; determine whether Bold Text can be reset
+  without reflashing; then test the 2 GiB BOOT with rollback available. Once
+  stable RAM is established, continue the measured Mali-G71 probe and driver.

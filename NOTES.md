@@ -15,9 +15,13 @@ yet. `ios-sweet` is the matching XNU/framebuffer base but uses software
 rendering; Hakios XNU/Metal target Adreno/A6xx and cannot drive the S8 Mali-G71.
 The S9+ Panfrost/GLES service is the closest Mali reference, but its Exynos 9810
 power/clock sequence is not valid for Exynos 8895. A second image with guarded
-`mali_probe=2` is prepared locally, pending pmsg from this boot. See
-`DREAMLTE_PROGRESS.md` and `docs/dreamlte-gpu-port.md`. Keep images, backups and
-phone dumps out of git.
+`mali_probe=2` is prepared locally, pending pmsg from this boot. The user
+reports a respring after enabling Bold Text followed by the Apple logo; ADB and
+fastboot currently see no phone, and USERDATA has not been overwritten. A
+separate 2 GiB image is staged but unflashed (SHA-256
+`3d0759daad297f5901d54867c055fe058fb7e1d53676f6e5ab6e3360c295266a`); the
+builder still defaults to 512 MiB. See `DREAMLTE_PROGRESS.md` and
+`docs/dreamlte-gpu-port.md`. Keep images, backups and phone dumps out of git.
 
 ## a5xelte fork handoff (2026-10-20)
 
