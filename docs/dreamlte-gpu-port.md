@@ -66,6 +66,8 @@ rendering integration.
 
 Linux's Exynos 8895 device tree identifies the S8 Mali block at `0x13900000`; the S9 driver is hard-coded for `0x17500000` and explicitly checks for a G72 (`GPU_ID >> 16 == 0x6221`). The S9 Mali source itself says it was adapted from a MediaTek G52 driver, then changed for Exynos 9810, and warns that the S9 initialization has device-specific power requirements. That makes it a strong architectural reference, not a drop-in driver.
 
+The LinuxS8 report records successful G71 reads on this model: `GPU_ID=0x60a00001`, `L2_FEATURES=0x07130206`, `AS_PRESENT=0x000000ff`, and `shader_present=0x17771777`; Linux reported the G3D domain on as `STATUS=0x0003000f`. These are reference results from Linux experiments, not measurements from the iOS kernel. Compare them against the guarded XNU probe output before designing power or clock writes.
+
 ## Safe implementation sequence
 
 1. Keep the current boot path unchanged; add no GPU register access to default boots. The optional XNU checkpoint is in `0125-dreamlte-mali-probe.patch`.
