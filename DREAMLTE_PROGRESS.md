@@ -400,3 +400,13 @@ to the pmsg zone and read from TWRP as `/sys/fs/pstore/pmsg-ramoops-0`.
   user-client, then EAGL/OSMesa and SweetSurface scanout integration. The next
   code milestone is the first S8-specific reusable kernel service. Current
   iOS remains software-rendered; acceleration is not implemented yet.
+- Added `xnu/patches/0131-dreamlte-mali-mmu-walk-test.patch` as the first
+  reusable-driver prerequisite. With `mali_mmu_job=1` (plus the existing
+  explicit Mali probe/clock/job flags), it creates four-level AArch64 GPU page
+  tables for the measured 48-bit VA/40-bit PA G71, maps one allocated kernel
+  page, and submits the `WRITE_VALUE` job through GPU VA `0x100000`. It logs
+  the MMU fault registers. The test is off by default, returns AS0 to identity
+  mode before freeing page tables, and retains them if completion/invalidation
+  is uncertain. `git apply --check` against the reconstructed XNU tree and
+  `git diff --check` passed. Kernel CI compile and physical MMU-walk result are
+  pending; this is not yet a user buffer driver or UI acceleration.

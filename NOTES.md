@@ -32,9 +32,15 @@ The S9 HakiosMali sources were audited but not transplanted: its power and
 clock sequence targets Exynos9810 (`0x14060000` PMU, `0x17400000` CMU,
 `0x17500000` Mali, ACPM/DTZPC), while dreamlte uses Exynos8895
 (`0x16480000`, `0x13800000`, `0x13900000`) and SweetSurface/S-Boot scanout.
-Next code step: implement and build a DREAMLTE-specific persistent MMU/job
-service and Panfrost user-client, then connect EAGL/OSMesa and the framebuffer.
-Do not report acceleration until a GLES render is verified on-screen.
+The first step is now implemented as uncommitted patch `0131`: an opt-in
+four-level GPU MMU page-walk smoke test using one allocated kernel page and a
+`WRITE_VALUE` job at GPU VA `0x100000`. It returns AS0 to identity mode before
+freeing the tables and retains pages if GPU completion or invalidation is
+uncertain. Patch application and whitespace checks pass; kernel CI compile and
+phone result are pending. This is still not a user buffer driver. Next build
+and run this MMU test, then implement the persistent Panfrost user-client and
+EAGL/OSMesa/framebuffer path. Do not report acceleration until a GLES render
+is verified on-screen.
 
 Patch `0129` adds an opt-in Mali-G71 reset/core/job-manager smoke test that
 checks whether a GPU `WRITE_VALUE` reaches kernel memory; it is not a GLES

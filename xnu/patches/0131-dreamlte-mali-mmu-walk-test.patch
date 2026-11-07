@@ -1,0 +1,174 @@
+diff --git a/bsd/dev/dreamlte_mali_probe.c b/bsd/dev/dreamlte_mali_probe.c
+index 6ca0d38..e69b28a 100644
+--- a/bsd/dev/dreamlte_mali_probe.c
++++ b/bsd/dev/dreamlte_mali_probe.c
+@@ -188,6 +188,140 @@ core_timeout:
+ 	return false;
+ }
+ 
++/* Opt-in follow-up: run the same WRITE_VALUE job through four-level
++ * AArch64 GPU page tables. This validates G71 MMU walks before a user client
++ * is allowed to submit buffers. GPU VA 0x100000 maps the single kernel page. */
++static bool
++s8g3d_mmu_job_test(vm_offset_t gpu)
++{
++	const uint64_t gpu_va = 0x00100000ull;
++	const uint64_t pte_table = 3ull;
++	const uint64_t pte_page = 3ull | (1ull << 10) | (3ull << 8) | (1ull << 6);
++	const uint64_t pte_address = 0x0000fffffffff000ull;
++	vm_offset_t pages[5] = { 0, 0, 0, 0, 0 };
++	uint64_t phys[5] = { 0, 0, 0, 0, 0 };
++	volatile uint64_t *root, *l1, *l2, *l3;
++	volatile uint32_t *job, *target;
++	uint32_t shader, tiler, l2mask, mmu, raw, slot, fault, fault_address;
++	bool ok = false, finished, tables_installed = false;
++
++	mmu = s8g3d_read(gpu, S8_G3D_MMU_FEATURES);
++	if ((mmu & 0xffu) < 40u || ((mmu >> 8) & 0xffu) < 36u) {
++		printf("S8-MALI: MMU job refused; unsupported MMU_FEATURES=%#x\n", mmu);
++		return false;
++	}
++	for (unsigned i = 0; i < 5; i++) {
++		if (kmem_alloc(kernel_map, &pages[i], PAGE_SIZE, KMA_KOBJECT | KMA_ZERO | KMA_DATA,
++		    VM_KERN_MEMORY_IOKIT) != KERN_SUCCESS) {
++			printf("S8-MALI: MMU job refused; page allocation failed at %u\n", i);
++			goto out;
++		}
++		phys[i] = kvtophys(pages[i]);
++		if (phys[i] == 0 || (phys[i] & (PAGE_SIZE - 1)) != 0 || (phys[i] >> 40) != 0) {
++			printf("S8-MALI: MMU job refused; page %u has unsupported PA %#llx\n", i, phys[i]);
++			goto out;
++		}
++	}
++
++	/* pages 0..3 are level 0..3; page 4 is the job and WRITE_VALUE target. */
++	root = (volatile uint64_t *)pages[0];
++	l1 = (volatile uint64_t *)pages[1];
++	l2 = (volatile uint64_t *)pages[2];
++	l3 = (volatile uint64_t *)pages[3];
++	job = (volatile uint32_t *)pages[4];
++	target = (volatile uint32_t *)(pages[4] + 0x800);
++	root[0] = phys[1] | pte_table;
++	l1[0] = phys[2] | pte_table;
++	l2[0] = phys[3] | pte_table;
++	l3[(gpu_va >> 12) & 0x1ffu] = (phys[4] & pte_address) | pte_page;
++	job[4] = (2u << 1) | 1u | (1u << 16); /* WRITE_VALUE, 64-bit pointers, job index 1 */
++	job[8] = (uint32_t)(gpu_va + 0x800);
++	job[9] = (uint32_t)((gpu_va + 0x800) >> 32);
++	job[10] = 6;
++	job[12] = 0x51a8c0deu;
++	for (unsigned i = 0; i < 5; i++) FlushPoC_DcacheRegion(pages[i], PAGE_SIZE);
++
++	shader = s8g3d_read(gpu, S8_GPU_SHADER_PRESENT);
++	tiler = s8g3d_read(gpu, 0x0110u);
++	l2mask = s8g3d_read(gpu, S8_GPU_L2_PRESENT);
++	s8g3d_write(gpu, S8_GPU_INT_MASK, 0);
++	s8g3d_write(gpu, S8_GPU_INT_CLEAR, 0xffffffffu);
++	s8g3d_write(gpu, S8_GPU_JOB_CLEAR, 0xffffffffu);
++	s8g3d_write(gpu, S8_GPU_CMD, 1u);
++	if (!s8g3d_wait(gpu, 0x0020u, S8_GPU_RESET_DONE, S8_GPU_RESET_DONE, 1000000)) {
++		printf("S8-MALI: MMU job stopped; GPU reset timed out\n");
++		goto out;
++	}
++	s8g3d_write(gpu, 0x0024u, 0xffffffffu);
++	s8g3d_write(gpu, S8_GPU_COHERENCY, S8_GPU_COHERENCY_NONE);
++	s8g3d_write(gpu, S8_GPU_L2_MMU_CONFIG,
++	    s8g3d_read(gpu, S8_GPU_L2_MMU_CONFIG) & ~S8_GPU_MMU_EXTERNAL_LIMITS);
++	s8g3d_write(gpu, S8_GPU_L2_PWRON, l2mask);
++	if (!s8g3d_wait(gpu, S8_GPU_L2_READY, l2mask, l2mask, 500000)) goto core_timeout;
++	s8g3d_write(gpu, S8_GPU_SHADER_PWRON, shader);
++	if (!s8g3d_wait(gpu, S8_GPU_SHADER_READY, shader, shader, 500000)) goto core_timeout;
++	s8g3d_write(gpu, S8_GPU_TILER_PWRON, tiler);
++	if (!s8g3d_wait(gpu, S8_GPU_TILER_READY, tiler, tiler, 500000)) goto core_timeout;
++
++	/* AS_TRANSCFG: AArch64 4-KiB tables, 48-bit VA, uncached table walks. */
++	s8g3d_write(gpu, S8_GPU_AS0 + S8_GPU_AS_TRANSTAB_LO, (uint32_t)phys[0]);
++	s8g3d_write(gpu, S8_GPU_AS0 + S8_GPU_AS_TRANSTAB_HI, (uint32_t)(phys[0] >> 32));
++	s8g3d_write(gpu, S8_GPU_AS0 + S8_GPU_AS_MEMATTR_LO, 0x88888888u);
++	s8g3d_write(gpu, S8_GPU_AS0 + S8_GPU_AS_MEMATTR_HI, 0x88888888u);
++	s8g3d_write(gpu, S8_GPU_AS0 + S8_GPU_AS_TRANSCFG, 6u | ((55u - 48u) << 6) | (1u << 24));
++	s8g3d_write(gpu, S8_GPU_AS0 + S8_GPU_AS_TRANSCFG + 4u, 0u);
++	s8g3d_write(gpu, S8_GPU_AS0 + S8_GPU_AS_COMMAND, 1u);
++	tables_installed = true;
++	if (!s8g3d_wait(gpu, S8_GPU_AS0 + S8_GPU_AS_STATUS, 1u, 0u, 500000)) {
++		printf("S8-MALI: MMU job stopped; AS0 table update timed out, status=%#x\n",
++		    s8g3d_read(gpu, S8_GPU_AS0 + S8_GPU_AS_STATUS));
++		goto retain;
++	}
++	s8g3d_write(gpu, S8_GPU_JOB_CLEAR, 0xffffffffu);
++	s8g3d_write(gpu, S8_GPU_JS1 + 0x40u, (uint32_t)gpu_va);
++	s8g3d_write(gpu, S8_GPU_JS1 + 0x44u, (uint32_t)(gpu_va >> 32));
++	s8g3d_write(gpu, S8_GPU_JS1 + 0x50u, shader);
++	s8g3d_write(gpu, S8_GPU_JS1 + 0x54u, 0u);
++	s8g3d_write(gpu, S8_GPU_JS1 + 0x58u, (3u << 8) | (3u << 12) | (8u << 16));
++	s8g3d_write(gpu, S8_GPU_JS1 + 0x60u, 1u);
++	(void)s8g3d_wait(gpu, S8_GPU_JOB_RAWSTAT, (1u << 1) | (1u << 17), S8_GPU_JOB_DONE, 10000000);
++	raw = s8g3d_read(gpu, S8_GPU_JOB_RAWSTAT);
++	slot = s8g3d_read(gpu, S8_GPU_JS1 + 0x24u);
++	fault = s8g3d_read(gpu, S8_GPU_AS0 + 0x1cu);
++	fault_address = s8g3d_read(gpu, S8_GPU_AS0 + 0x20u);
++	finished = (raw & S8_GPU_JOB_DONE) != 0;
++	FlushPoC_DcacheRegion(pages[4], PAGE_SIZE);
++	ok = *target == 0x51a8c0deu;
++	printf("S8-MALI: GPU MMU WALK %s; va=%#llx value=%#x raw=%#x slot=%#x fault=%#x at=%#x\n",
++	    ok ? "PASS" : "FAIL", gpu_va, *target, raw, slot, fault, fault_address);
++	s8g3d_write(gpu, S8_GPU_JOB_CLEAR, 0xffffffffu);
++	if (!finished) {
++		/* Do not free pages or page tables that a timed-out GPU may still use. */
++		goto retain;
++	}
++	/* Leave the address space safe before releasing its tables. */
++	s8g3d_write(gpu, S8_GPU_AS0 + S8_GPU_AS_TRANSTAB_LO, 0u);
++	s8g3d_write(gpu, S8_GPU_AS0 + S8_GPU_AS_TRANSTAB_HI, 0u);
++	s8g3d_write(gpu, S8_GPU_AS0 + S8_GPU_AS_TRANSCFG, 2u);
++	s8g3d_write(gpu, S8_GPU_AS0 + S8_GPU_AS_TRANSCFG + 4u, 0u);
++	s8g3d_write(gpu, S8_GPU_AS0 + S8_GPU_AS_COMMAND, 1u);
++	if (!s8g3d_wait(gpu, S8_GPU_AS0 + S8_GPU_AS_STATUS, 1u, 0u, 500000)) goto retain;
++	tables_installed = false;
++	goto out;
++
++core_timeout:
++	printf("S8-MALI: MMU job stopped; core power-up timeout L2=%#x shader=%#x tiler=%#x\n",
++	    s8g3d_read(gpu, S8_GPU_L2_READY), s8g3d_read(gpu, S8_GPU_SHADER_READY),
++	    s8g3d_read(gpu, S8_GPU_TILER_READY));
++	goto out;
++retain:
++	printf("S8-MALI: MMU test pages retained%s\n", tables_installed ? " with AS0 tables installed" : " for GPU safety");
++	return ok;
++out:
++	for (unsigned i = 0; i < 5; i++) if (pages[i] != 0) kmem_free(kernel_map, pages[i], PAGE_SIZE);
++	return ok;
++}
++
+ static uint32_t
+ s8g3d_read(vm_offset_t base, uint32_t offset)
+ {
+@@ -247,12 +381,13 @@ s8g3d_clock_200(vm_offset_t cmu, vm_offset_t top, uint32_t pd_status, uint32_t g
+ void
+ dreamlte_mali_probe(void)
+ {
+-	uint32_t level = 0, clock_200 = 0, job_test = 0;
++	uint32_t level = 0, clock_200 = 0, job_test = 0, mmu_job_test = 0;
+ 	vm_offset_t pmu, cmu, top, gpu;
+ 
+ 	(void)PE_parse_boot_argn("mali_probe", &level, sizeof(level));
+ 	(void)PE_parse_boot_argn("mali_clock", &clock_200, sizeof(clock_200));
+ 	(void)PE_parse_boot_argn("mali_job", &job_test, sizeof(job_test));
++	(void)PE_parse_boot_argn("mali_mmu_job", &mmu_job_test, sizeof(mmu_job_test));
+ 	if (level == 0) {
+ 		return;
+ 	}
+@@ -327,7 +462,12 @@ dreamlte_mali_probe(void)
+ 			printf("S8-MALI: GPU job not attempted; mali_clock=200 readback guard did not pass\n");
+ 			return;
+ 		}
+-		(void)s8g3d_job_test(gpu);
++		bool identity_ok = s8g3d_job_test(gpu);
++		if (identity_ok && mmu_job_test == 1) {
++			(void)s8g3d_mmu_job_test(gpu);
++		} else if (mmu_job_test == 1) {
++			printf("S8-MALI: MMU job not attempted; identity-mode job did not pass\n");
++		}
+ 	}
+ }
+ #endif /* ARM64_BOARD_CONFIG_A5XELTE */
