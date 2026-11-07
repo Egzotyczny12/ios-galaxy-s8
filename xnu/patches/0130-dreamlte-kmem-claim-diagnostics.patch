@@ -1,0 +1,21 @@
+diff --git a/osfmk/vm/vm_kern.c b/osfmk/vm/vm_kern.c
+index 54edb01..5faeed4 100644
+--- a/osfmk/vm/vm_kern.c
++++ b/osfmk/vm/vm_kern.c
+@@ -3641,8 +3641,14 @@ kmem_scramble_ranges(void)
+ 		struct mach_vm_range *sp_range = sp.kc_range;
+ 		if (vm_map_locate_space(kernel_map, sp.kc_size, 0,
+ 		    VM_MAP_KERNEL_FLAGS_ANYWHERE(), &start, NULL) != KERN_SUCCESS) {
+-			panic("kmem_range_init: vm_map_locate_space failing for claim %s",
+-			    sp.kc_name);
++			panic("kmem_range_init: vm_map_locate_space failing for claim %s "
++			    "size=%#llx hint=%#llx map=[%#llx,%#llx) allowed=[%#llx,%#llx)",
++			    sp.kc_name, (unsigned long long)sp.kc_size,
++			    (unsigned long long)start,
++			    (unsigned long long)kernel_map->min_offset,
++			    (unsigned long long)kernel_map->max_offset,
++			    (unsigned long long)sp_range->min_address,
++			    (unsigned long long)sp_range->max_address);
+ 		}
+ 
+ 		end = start + sp.kc_size;

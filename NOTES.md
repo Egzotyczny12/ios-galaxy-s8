@@ -19,48 +19,34 @@ capacity change is confirmed. ADB is not expected once iOS is running. The
 interrupted local USERDATA prefix dump is incomplete and is not a usable
 backup; it is outside git.
 
-There is still no Mali power-up, job-submission path, GLES client or
-GPU-accelerated rendering in the S8 kernel. `ios-sweet` is the matching
-XNU/framebuffer base but uses software rendering; Hakios XNU/Metal target
-Adreno/A6xx and cannot drive the S8 Mali-G71. The S9+ Panfrost/GLES service is
-the closest Mali reference, but its Exynos 9810 power/clock sequence is not
-valid for Exynos 8895. `mali_probe=1` BOOT was readback-verified previously;
-its PMU/CMU output is still pending. Patch `0126` adds the guarded read-only
-`mali_probe=3` feature-register dump; CI run `42311503465` passed. Its
-unflashed BOOT image is `/tmp/s8-ios-mali-feature-probe.img` (SHA-256
-`1aee93ec149a6cb5214cddcca59c536132e3c590e3968d90f48627c05142ca41`). Patch
-`0127` adds read-only CMU_TOP/CMU_G3D clock state; CI run `42313291998` passed.
-The unflashed combined probe image is `/tmp/s8-ios-mali-clock-probe.img`
-(SHA-256 `637d069acbce14bec4a6ddcd0dc15c14a271ca4899dcac16f49480062e194e82`).
-LinuxS8's initially working switch clock was 200 MHz, then its later validated
-configuration raised it to 400 MHz; neither rate is confirmed in this XNU boot.
-Patch `0128` adds an opt-in `mali_clock=200` setting guarded by PMU-on and
-G71-ID checks, with clock readback. CI run `42315170764` passed. On 2026-11-07
-the user returned the phone to TWRP; the diagnostic image
-`/tmp/s8-ios-mali-clock-200.img` (SHA-256
-`04fe9f499bb4a670dbca5b58fbed80f534d91dbb54ec324644aca268fd13f3d2`) was
-written only to `/dev/block/sda7`. Its 17-MiB prefix readback matched byte for
-byte. The 40-MiB BOOT rollback remains saved and had matched the full BOOT
-before the write. The user reports iOS now reaches the interface much faster
-but remains laggy. A TWRP readback of the prior boot log showed SpringBoard
-executed, all four requested CPUs initialized, and only 118,643 free 4-KiB
-pages; no GPU job had run. The guarded probe recorded PMU status `0x3000f`,
-G71 ID `0x60a00001`, and matching 200-MHz route register readbacks. Its
-`shader_present` was read from the wrong offset (`0x1000`); patch `0129` fixes
-that to `0x100` and adds an opt-in G71 reset/core/job-manager test that verifies
-a GPU `WRITE_VALUE` against kernel memory. CI run `42317239859` passed. Image
-`/tmp/s8-ios-mali-job-2g.img` (SHA-256
-`f8093d74dd008448031a33a033244aa40aa740bbd7b310743799fbf1f2d8c4d9`) sets
-`mali_probe=3 mali_clock=200 mali_job=1` and ADT `dram-size=0x80000000`. It was
-flashed only to `/dev/block/sda7`; the 17-MiB image prefix readback matched
-exactly. A full 40-MiB readback of the faster 200-MHz BOOT is preserved outside
-git at `/tmp/s8-boot-sda7-clock200-full.img` (SHA-256
-`7cb6e5f7047f9a2ded3918b517144b0269bde1f1e9ccd1b764f7d2891122c0e7`). The
-device was rebooted; runtime stability, memory and job result are pending. Even
-a passing job is only a compute smoke test, not display acceleration. The full
-4-GiB RAM map is non-contiguous and cannot be exposed by increasing
-`dram-size`. See `DREAMLTE_PROGRESS.md` and `docs/dreamlte-gpu-port.md`. Keep
-images, backups and phone dumps out of git.
+Patch `0129` adds an opt-in Mali-G71 reset/core/job-manager smoke test that
+checks whether a GPU `WRITE_VALUE` reaches kernel memory; it is not a GLES
+driver or accelerated compositor. CI run `42317239859` passed. The 2-GiB
+`mali_probe=3 mali_clock=200 mali_job=1` image panicked in
+`kmem_range_init: vm_map_locate_space`. A second 2-GiB attempt added
+`vm_compression_limit=2097152` (8 GiB in pages) but showed the same early panic.
+The photo only establishes the panic family; the exact failed claim is not
+legible, and pstore currently contains only TWRP entries. The USERDATA console
+ring is stale from the prior successful boot because kernel logging did not
+reach its flush stage. TWRP currently sees 3,564,116 KiB and reports a firmware-
+free contiguous 2-GiB bank at `0x880000000`; its other RAM ranges are not yet
+supported by the single-range XNU boot contract.
+
+The phone is in TWRP. Current BOOT `/dev/block/sda7` was fully read back to
+`/tmp/s8-current-state/BOOT.current.img`, 40 MiB, SHA-256
+`2ff8493f139e74a1254bff834ebfe93874a7fe6f797dabb73ef0a42c7cd6aa7d`. A known
+faster 512-MiB/200-MHz rollback remains at
+`backup/pre-userdata-reflash/BOOT.current.img`, SHA-256
+`9196ce9d3d79ed8763ef168fbf636aa9c3596adef6f924aecd04ec5bcd051618`.
+Patch `0130-dreamlte-kmem-claim-diagnostics.patch` now expands the early panic
+with the failed claim name, requested size, search hint, map bounds and claim
+constraint. It applies after patches 0125–0129 in the reconstructed XNU tree;
+build and phone verification are pending. Next: build 0130, make a 2-GiB
+diagnostic BOOT with the GPU job guard still enabled, flash only after a full
+readback of the current rollback, then use the on-screen panic fields to fix
+the VM layout. Do not claim RAM expansion or GPU acceleration until logs prove
+the VM boot and GPU sentinel; a passing sentinel still does not prove GLES or
+display composition. Keep images, backups and phone dumps out of git.
 
 ## a5xelte fork handoff (2026-10-20)
 

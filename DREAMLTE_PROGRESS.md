@@ -275,3 +275,35 @@ to the pmsg zone and read from TWRP as `/sys/fs/pstore/pmsg-ramoops-0`.
   Wrote the candidate only to `/dev/block/sda7`; its 17-MiB prefix readback
   matched the candidate hash. Reboot was issued. Device runtime / pstore result
   is pending. The preserved rollback is the faster 200-MHz image.
+
+## 2026-11-07 — repeated 2-GiB VM panic and early diagnostics
+
+- User returned the Galaxy S8 to TWRP. ADB identifies `omni_dreamlte`; the
+  kernel-visible RAM is 3,564,116 KiB. The only confirmed firmware-free
+  contiguous bank suitable for the current one-range XNU handoff is
+  `0x880000000..0x8ffffffff` (2 GiB). This remains a Linux/TWRP map fact, not
+  proof XNU can initialize or use that bank.
+- Current BOOT p7 (`/dev/block/sda7`) was read back in full (40 MiB) to
+  `/tmp/s8-current-state/BOOT.current.img`, SHA-256
+  `2ff8493f139e74a1254bff834ebfe93874a7fe6f797dabb73ef0a42c7cd6aa7d`. The
+  known faster 512-MiB/200-MHz image is preserved in
+  `backup/pre-userdata-reflash/BOOT.current.img`, SHA-256
+  `9196ce9d3d79ed8763ef168fbf636aa9c3596adef6f924aecd04ec5bcd051618`.
+- The 2-GiB Mali job trial panicked in `kmem_range_init`; a second 2-GiB image
+  with `vm_compression_limit=2097152` produced the same panic family. No fresh
+  `console-ramoops-0` exists. `pmsg-ramoops-0` contains only TWRP startup, and
+  the USERDATA console ring is unchanged from the earlier successful iOS boot.
+  The phone photo does not make the claim name/size reliably readable, so the
+  specific VM allocation that failed is still unknown.
+- Added `xnu/patches/0130-dreamlte-kmem-claim-diagnostics.patch`. The early
+  panic now includes claim name, requested bytes, search hint, kernel-map
+  bounds and the claim's allowed range. Ordered reconstruction of the XNU tree
+  with patches 0001–0130 succeeded (128 applied commits; only the existing
+  staged HFS patches 0031/0041 were skipped). CI build and on-device result are
+  pending.
+- Next: build the diagnostic kernel and package a 2-GiB BOOT retaining the
+  guarded GPU job option. Before flashing, preserve and verify the current
+  full BOOT rollback. Use the expanded on-screen panic to identify the claim;
+  do not change compressor or kmem sizes by guess. A passing XNU VM init and a
+  passing G71 sentinel remain separate gates; neither proves GLES or UI
+  acceleration.
