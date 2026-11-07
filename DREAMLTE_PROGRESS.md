@@ -410,3 +410,17 @@ to the pmsg zone and read from TWRP as `/sys/fs/pstore/pmsg-ramoops-0`.
   is uncertain. `git apply --check` against the reconstructed XNU tree and
   `git diff --check` passed. Kernel CI compile and physical MMU-walk result are
   pending; this is not yet a user buffer driver or UI acceleration.
+
+## 2026-11-07 — G71 MMU walk image built
+
+- GitHub Actions run `42361163053` built commit `405580d` successfully. The
+  whole-image LSE scan reported only the known `K256` constant false positive;
+  no executable LSE instruction was reported. Kernel SHA-256:
+  `a9b88b763bffafcca3fee0f4dce8d5e933f06d44fee0a818338b8690d1baba86`.
+- Packaged `/tmp/s8-ios-mali-mmu-walk-512m.img`, SHA-256
+  `4c8cd95b936ec01eefe44855823d401cee93c1206b61cb5457dbed210dfcac79`.
+  Parsed the image and confirmed `cpus=4`, `rd=ufsroot0`, `ufsroot=USERDATA`,
+  `mali_probe=3 mali_clock=200 mali_job=1 mali_mmu_job=1`; its ADT reports
+  base `0x880000000`, size `0x20000000` (512 MiB). The payload contains the
+  same command line. This candidate has not been flashed; the user reports the
+  phone is currently running iOS, so physical MMU-walk validation awaits TWRP.

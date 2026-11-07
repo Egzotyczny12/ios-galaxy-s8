@@ -37,10 +37,16 @@ four-level GPU MMU page-walk smoke test using one allocated kernel page and a
 `WRITE_VALUE` job at GPU VA `0x100000`. It returns AS0 to identity mode before
 freeing the tables and retains pages if GPU completion or invalidation is
 uncertain. Patch application and whitespace checks pass; kernel CI compile and
-phone result are pending. This is still not a user buffer driver. Next build
-and run this MMU test, then implement the persistent Panfrost user-client and
-EAGL/OSMesa/framebuffer path. Do not report acceleration until a GLES render
-is verified on-screen.
+Actions run `42361163053` compiled it successfully (kernel SHA-256
+`a9b88b763bffafcca3fee0f4dce8d5e933f06d44fee0a818338b8690d1baba86`). The
+512-MiB candidate `/tmp/s8-ios-mali-mmu-walk-512m.img` is built and parsed
+(hash `4c8cd95b936ec01eefe44855823d401cee93c1206b61cb5457dbed210dfcac79`);
+its command line includes `mali_probe=3 mali_clock=200 mali_job=1
+mali_mmu_job=1`, and its ADT exposes only 512 MiB. It has not been flashed
+because the user reports the phone is currently in iOS. This is still not a
+user buffer driver. Next run this MMU test from TWRP, then implement the
+persistent Panfrost user-client and EAGL/OSMesa/framebuffer path. Do not report
+acceleration until a GLES render is verified on-screen.
 
 Patch `0129` adds an opt-in Mali-G71 reset/core/job-manager smoke test that
 checks whether a GPU `WRITE_VALUE` reaches kernel memory; it is not a GLES

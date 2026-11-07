@@ -1,7 +1,18 @@
 diff --git a/bsd/dev/dreamlte_mali_probe.c b/bsd/dev/dreamlte_mali_probe.c
-index 6ca0d38..e69b28a 100644
+index 6ca0d38..6705886 100644
 --- a/bsd/dev/dreamlte_mali_probe.c
 +++ b/bsd/dev/dreamlte_mali_probe.c
+@@ -1,7 +1,7 @@
+ /*
+- * Read-only, opt-in Mali-G71 discovery for Samsung Galaxy S8 (dreamlte).
+- * This is a diagnostic checkpoint only: it never powers the GPU, changes
+- * clocks, installs interrupts, or submits work.
++ * Opt-in Mali-G71 discovery and one-shot diagnostics for Samsung Galaxy S8
++ * (dreamlte). No GPU access or writes occur unless explicit boot arguments
++ * request them; these probes do not provide a renderer or user GPU service.
+  */
+ #if defined(ARM64_BOARD_CONFIG_A5XELTE)
+ #include <sys/types.h>
 @@ -188,6 +188,140 @@ core_timeout:
  	return false;
  }
