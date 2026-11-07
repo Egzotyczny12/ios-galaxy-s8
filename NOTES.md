@@ -40,13 +40,31 @@ faster 512-MiB/200-MHz rollback remains at
 `9196ce9d3d79ed8763ef168fbf636aa9c3596adef6f924aecd04ec5bcd051618`.
 Patch `0130-dreamlte-kmem-claim-diagnostics.patch` now expands the early panic
 with the failed claim name, requested size, search hint, map bounds and claim
-constraint. It applies after patches 0125–0129 in the reconstructed XNU tree;
-build and phone verification are pending. Next: build 0130, make a 2-GiB
-diagnostic BOOT with the GPU job guard still enabled, flash only after a full
-readback of the current rollback, then use the on-screen panic fields to fix
-the VM layout. Do not claim RAM expansion or GPU acceleration until logs prove
-the VM boot and GPU sentinel; a passing sentinel still does not prove GLES or
-display composition. Keep images, backups and phone dumps out of git.
+constraint. The ordered source reconstruction passed and Actions run
+`42357416273` built the kernel successfully; kernel SHA-256
+`6770d6ad86ef81b1eabb0d34088e61821afde52b0541be5eb165479df9f9e08a`.
+Packaged a 512-MiB/200-MHz test image
+`/tmp/s8-ios-mali-job-diagnostic-512m.img`, SHA-256
+`d8419c6301e53faa8f1b5438c4257cf30af2702b3109122bd8eefee2a2569183`; payload
+and ADT both verified `dram-base=0x880000000`, `dram-size=0x20000000`, and the
+documented S8 args including `mali_probe=3 mali_clock=200 mali_job=1`. Also
+packaged an unflashed 2-GiB diagnostic image
+`/tmp/s8-ios-mali-job-diagnostic-2g.img`, SHA-256
+`bc0ad839f5f4729cab1793c6fc29d4a53f95ae7196692a943e8a90320adac8ec`; its
+payload and ADT both verified `dram-size=0x80000000` and compressor cap
+`vm_compression_limit=2097152`.
+
+The 512-MiB GPU-job image was written only to verified BOOT p7. Reading the
+exact 17,700,880-byte prefix back through a TWRP file produced the same SHA-256
+as the candidate. A complete post-write 40-MiB BOOT readback is preserved
+outside git at `/tmp/s8-current-state/BOOT.gpu-test.full.img` (SHA-256
+`44c139697b87255d958c4a5dbb03f27b4eb8cacf003a174b12aa4e747535631f`); the
+known 512-MiB baseline rollback remains separately available. Reboot has been
+requested. Runtime startup and the `S8-MALI: GPU WRITE_VALUE PASS/FAIL` result
+are pending; do not infer them from ADB going offline. If this reaches iOS,
+allow the usual slow boot, then return to TWRP to pull pmsg and the USERDATA
+console ring. Next, use the unflashed 2-GiB image with 0130 to capture the
+exact VM claim. Keep images, backups and phone dumps out of git.
 
 ## a5xelte fork handoff (2026-10-20)
 

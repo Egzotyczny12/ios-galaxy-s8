@@ -298,12 +298,28 @@ to the pmsg zone and read from TWRP as `/sys/fs/pstore/pmsg-ramoops-0`.
 - Added `xnu/patches/0130-dreamlte-kmem-claim-diagnostics.patch`. The early
   panic now includes claim name, requested bytes, search hint, kernel-map
   bounds and the claim's allowed range. Ordered reconstruction of the XNU tree
-  with patches 0001–0130 succeeded (128 applied commits; only the existing
-  staged HFS patches 0031/0041 were skipped). CI build and on-device result are
-  pending.
-- Next: build the diagnostic kernel and package a 2-GiB BOOT retaining the
-  guarded GPU job option. Before flashing, preserve and verify the current
-  full BOOT rollback. Use the expanded on-screen panic to identify the claim;
-  do not change compressor or kmem sizes by guess. A passing XNU VM init and a
-  passing G71 sentinel remain separate gates; neither proves GLES or UI
-  acceleration.
+  with patches 0001–0130 succeeded (128 applied commits; only staged HFS
+  patches 0031/0041 were skipped). GitHub Actions run `42357416273` succeeded;
+  kernel SHA-256 is
+  `6770d6ad86ef81b1eabb0d34088e61821afde52b0541be5eb165479df9f9e08a`.
+- Built a 512-MiB/200-MHz GPU-job test image
+  `/tmp/s8-ios-mali-job-diagnostic-512m.img`, SHA-256
+  `d8419c6301e53faa8f1b5438c4257cf30af2702b3109122bd8eefee2a2569183`.
+  Parsed its payload and ADT: both have base `0x880000000`, size
+  `0x20000000`, and command line has `mali_probe=3 mali_clock=200 mali_job=1`
+  plus the documented S8 flags. Also built an unflashed 2-GiB diagnostic
+  image `/tmp/s8-ios-mali-job-diagnostic-2g.img`, SHA-256
+  `bc0ad839f5f4729cab1793c6fc29d4a53f95ae7196692a943e8a90320adac8ec`, with
+  payload/ADT size `0x80000000` and `vm_compression_limit=2097152`.
+- Wrote the 512-MiB test image only to verified BOOT p7. Exact-length readback
+  of its 17,700,880-byte prefix via a TWRP file matched the candidate hash.
+  Preserved a complete 40-MiB post-write BOOT at
+  `/tmp/s8-current-state/BOOT.gpu-test.full.img`, SHA-256
+  `44c139697b87255d958c4a5dbb03f27b4eb8cacf003a174b12aa4e747535631f`, as
+  well as the verified known 512-MiB baseline rollback. Reboot was requested;
+  runtime result is pending. When back in TWRP, retrieve pmsg and the USERDATA
+  console ring for `S8-MALI: GPU WRITE_VALUE PASS/FAIL`.
+- Next: use the 512-MiB boot to verify the GPU job independently of the known
+  2-GiB VM panic; then boot the 2-GiB diagnostic image and use the expanded
+  panic fields to identify the exact failed VM claim. Keep build success,
+  RAM map, GPU sentinel, GLES and accelerated composition as separate claims.
