@@ -1,5 +1,5 @@
 diff --git a/bsd/dev/dreamlte_mali_probe.c b/bsd/dev/dreamlte_mali_probe.c
-index 4b756c0..8044e86 100644
+index 4b756c0..6ca0d38 100644
 --- a/bsd/dev/dreamlte_mali_probe.c
 +++ b/bsd/dev/dreamlte_mali_probe.c
 @@ -8,8 +8,12 @@
@@ -24,11 +24,12 @@ index 4b756c0..8044e86 100644
  #define S8_G3D_CORE_FEATURES 0x0008u
  #define S8_G3D_TILER_FEATURES 0x000cu
  #define S8_G3D_MEM_FEATURES  0x0010u
-@@ -41,6 +45,146 @@ extern vm_offset_t ml_io_map(vm_offset_t, vm_size_t);
+@@ -41,6 +45,148 @@ extern vm_offset_t ml_io_map(vm_offset_t, vm_size_t);
  #define S8_G3D_JS_PRESENT    0x001cu
  #define S8_G3D_INT_RAWSTAT   0x0020u
  #define S8_G3D_G71_ID        0x60a0u
 +#define S8_GPU_INT_MASK      0x0028u
++#define S8_GPU_INT_CLEAR     0x0024u
 +#define S8_GPU_CMD           0x0030u
 +#define S8_GPU_SHADER_PRESENT 0x0100u
 +#define S8_GPU_L2_PRESENT    0x0120u
@@ -111,6 +112,7 @@ index 4b756c0..8044e86 100644
 +	FlushPoC_DcacheRegion(page, PAGE_SIZE);
 +
 +	s8g3d_write(gpu, S8_GPU_INT_MASK, 0);
++	s8g3d_write(gpu, S8_GPU_INT_CLEAR, S8_GPU_RESET_DONE);
 +	s8g3d_write(gpu, S8_GPU_JOB_CLEAR, 0xffffffffu);
 +	s8g3d_write(gpu, S8_GPU_CMD, 1u);    /* soft reset */
 +	if (!s8g3d_wait(gpu, 0x0020u, S8_GPU_RESET_DONE, S8_GPU_RESET_DONE, 1000000)) {
@@ -171,7 +173,7 @@ index 4b756c0..8044e86 100644
  
  static uint32_t
  s8g3d_read(vm_offset_t base, uint32_t offset)
-@@ -101,11 +245,12 @@ s8g3d_clock_200(vm_offset_t cmu, vm_offset_t top, uint32_t pd_status, uint32_t g
+@@ -101,11 +247,12 @@ s8g3d_clock_200(vm_offset_t cmu, vm_offset_t top, uint32_t pd_status, uint32_t g
  void
  dreamlte_mali_probe(void)
  {
@@ -185,7 +187,7 @@ index 4b756c0..8044e86 100644
  	if (level == 0) {
  		return;
  	}
-@@ -156,8 +301,9 @@ dreamlte_mali_probe(void)
+@@ -156,8 +303,9 @@ dreamlte_mali_probe(void)
  	    s8g3d_read(gpu, S8_G3D_L2_FEATURES),
  	    s8g3d_read(gpu, S8_G3D_AS_PRESENT),
  	    s8g3d_read(gpu, S8_G3D_SHADER));
@@ -196,7 +198,7 @@ index 4b756c0..8044e86 100644
  	}
  	if (level < 3) {
  		return;
-@@ -174,5 +320,12 @@ dreamlte_mali_probe(void)
+@@ -174,5 +322,12 @@ dreamlte_mali_probe(void)
  	    s8g3d_read(gpu, S8_G3D_MMU_FEATURES),
  	    s8g3d_read(gpu, S8_G3D_JS_PRESENT),
  	    s8g3d_read(gpu, S8_G3D_INT_RAWSTAT));
