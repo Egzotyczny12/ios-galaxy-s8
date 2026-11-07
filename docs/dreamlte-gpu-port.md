@@ -2,7 +2,7 @@
 
 ## Current state
 
-The iOS port currently uses the S-Boot framebuffer and CPU rendering. The opt-in, one-shot G71 `WRITE_VALUE` smoke test has passed on the phone, but there is no reusable Mali job/MMU driver, GLES userspace path, or accelerated compositor. Apple's bundled AGX driver targets Apple GPUs, so the route is a Panfrost-compatible Mali backend plus a GLES path, not an AGX boot flag.
+The iOS port currently uses the S-Boot framebuffer and CPU rendering. The phone has passed a one-shot G71 `WRITE_VALUE` job through four-level GPU page tables. Patch `0132` now adds an opt-in kernel Panfrost user-client/BO transport candidate, but it has not yet passed kernel CI or device validation. There is still no GLES userspace path or accelerated compositor, so iOS remains unaccelerated. Apple's bundled AGX driver targets Apple GPUs; the route is a Panfrost-compatible Mali backend plus a GLES path.
 
 ## Same-device hardware evidence: LinuxS8
 
@@ -15,6 +15,8 @@ The documented Linux setup requires the G3D power domain at PMU `0x16480000 + 0x
 `xnu/patches/0125-dreamlte-mali-probe.patch` adds a DREAMLTE-only diagnostic hook. It is disabled unless a `mali_probe` boot argument is supplied. Level 1 reads and logs the G3D PMU configuration/status and CMU switch-user register. Level 2 also reads GPU identity/features only if the power-domain status already reports fully on. Patch `0126-dreamlte-mali-feature-probe.patch` adds opt-in `mali_probe=3` reads for G71 feature registers, guarded by the G71 product ID. Patch `0127-dreamlte-mali-clock-state-probe.patch` adds read-only CMU_TOP and CMU_G3D clock state. Patch `0128-dreamlte-mali-clock-200mhz.patch` adds one explicit write-enabled boot argument, `mali_clock=200`: after the same PMU/G71 guards, it selects the Exynos8895 CMU_TOP switch path, requests the known 200-MHz setting, enables the clock gates, and verifies register readbacks. With the argument absent, 0128 makes no writes. This is a controlled clock bring-up stage; it does not reset the GPU, submit a job or provide acceleration yet.
 
 Patch `0131-dreamlte-mali-mmu-walk-test.patch` adds an optional follow-up controlled by `mali_mmu_job=1` alongside `mali_probe=3 mali_clock=200 mali_job=1`. It allocates five kernel pages, builds a four-level AArch64 GPU page table mapping one page at VA `0x100000`, and runs a `WRITE_VALUE` job through that mapping. It reports the MMU fault status/address and retains pages if GPU completion or AS invalidation is uncertain. This remains a one-shot kernel diagnostic; it does not expose user buffers or render GLES. Kernel CI run `42361163053` passed. The 512-MiB image was run on the phone, and its USERDATA log confirms `GPU MMU WALK PASS` at VA `0x100000`, value `0x51a8c0de`, with no MMU fault. The UI still runs without acceleration.
+
+Patch `0132-dreamlte-panfrost-userclient.patch` adds the Panfrost client and persistent GPU address-space support, activated only with `mali_service=1` alongside the preceding guarded bring-up flags. It exposes GET_PARAM, BO allocation/mapping, synchronous job submit/wait, and close requests. This is transport groundwork only: no EAGL integration, IOSurface binding, render verification, or UI acceleration exists yet. Kernel CI and phone validation are pending; do not flash this candidate until the build passes and a separate image is reviewed.
 
 ## Closest reference: Galaxy S9+ Exynos
 

@@ -2,6 +2,16 @@
 
 ## DREAMLTE handoff (2026-11-07, read first)
 
+**GPU work update (2026-11-07):** the latest read-only ADB check finds the
+phone in TWRP (`ce11182ba028ab1803`, `omni_dreamlte`). The physical G71 MMU walk
+and WRITE_VALUE job are verified, but UI acceleration is not. Patch
+`0132-dreamlte-panfrost-userclient.patch` adds the opt-in Panfrost IOKit/BO/job
+transport candidate (`mali_service=1` plus the guarded Mali flags). It applies
+cleanly after patch 0131; CI and physical validation are pending. No 0132
+kernel/image was flashed. EAGL/OSMesa, IOSurface binding and accelerated
+composition are still unfinished; the phone remains on its prior bootable
+setup.
+
 This is a separate Galaxy S8 report; the SWEET donor history below is unchanged.
 The user authorized reflashing USERDATA after iOS stalled at the Apple logo.
 From TWRP, `tools/dreamlte/flash-chunks.py` wrote `ios16-root.img` to the

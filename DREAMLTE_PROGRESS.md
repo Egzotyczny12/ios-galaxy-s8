@@ -450,3 +450,25 @@ to the pmsg zone and read from TWRP as `/sys/fs/pstore/pmsg-ramoops-0`.
   TWRP; the MMU result was collected read-only.
 - Next implement the persistent Panfrost request service atop the now-verified
   S8 GPU page-table/job path, then GLES/EAGL and framebuffer integration.
+
+## 2026-11-07 — Panfrost user-client candidate prepared
+
+- Added patch `0132-dreamlte-panfrost-userclient.patch` on top of 0131 for the
+  persistent GPU address space and IOKit client. It gates service startup on
+  `mali_service=1`; it retains the four-level GPU address space only
+  after the identity-mode and page-walk smoke jobs pass, and exposes a first
+  IOKit Panfrost transport for GPU parameters, buffer objects, mapping, job
+  submit/wait and close. It does not add EAGL, IOSurface rendering or an
+  accelerated compositor. The iOS interface remains unaccelerated.
+- Compared the request selectors and G71 parameter indices with the S9
+  Hakios/Mesa 25.0.7 references. Corrected S8 TLS allocation reporting to use
+  `THREAD_TLS_ALLOC` with the `THREAD_MAX_THREADS` floor, and flushes the AS
+  after buffer mappings before each submitted job. The verified S8 MMU/job
+  initialization and Exynos 8895 power path remain in use.
+- The patch applies cleanly to the reconstructed XNU state after 0131 and
+  passes source whitespace checks. ADB currently lists the phone as
+  `omni_dreamlte` recovery.
+  Kernel CI compilation is the next checkpoint; no 0132 image has been built
+  or flashed yet. The candidate must compile and then be checked for basic
+  Panfrost BO/job operation before starting the separate Mesa EAGL/display
+  integration work.

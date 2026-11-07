@@ -1,0 +1,295 @@
+diff --git a/bsd/dev/dreamlte_mali_probe.c b/bsd/dev/dreamlte_mali_probe.c
+index 6705886..b2830da 100644
+--- a/bsd/dev/dreamlte_mali_probe.c
++++ b/bsd/dev/dreamlte_mali_probe.c
+@@ -5,6 +5,8 @@
+  */
+ #if defined(ARM64_BOARD_CONFIG_A5XELTE)
+ #include <sys/types.h>
++#include <kern/locks.h>
++#include <stdint.h>
+ #include <sys/systm.h>
+ #include <machine/machine_routines.h>
+ #include <pexpert/pexpert.h>
+@@ -13,7 +15,19 @@
+ 
+ extern vm_offset_t ml_io_map(vm_offset_t, vm_size_t);
+ extern uint64_t kvtophys(vm_offset_t);
++extern boolean_t pmap_valid_address(uint64_t);
+ extern void FlushPoC_DcacheRegion(vm_offset_t, size_t);
++void HakiosMaliStart(void);
++
++/* Persistent address space shared by Panfrost clients once the opt-in service
++ * has passed both the identity and translated WRITE_VALUE jobs. */
++static vm_offset_t s8_mali_pt_va[4];
++static uint64_t s8_mali_pt_pa[4];
++static vm_offset_t s8_mali_regs;
++static bool s8_mali_service_ready;
++static LCK_GRP_DECLARE(s8_mali_pt_group, "dreamlte-mali-pt");
++static LCK_MTX_DECLARE(s8_mali_pt_lock, &s8_mali_pt_group);
++static LCK_MTX_DECLARE(s8_mali_job_lock, &s8_mali_pt_group);
+ 
+ #define S8_G3D_PMU_PA       0x16480000u
+ #define S8_G3D_PMU_SIZE     0x5000u
+@@ -204,6 +218,8 @@ s8g3d_mmu_job_test(vm_offset_t gpu)
+ 	volatile uint32_t *job, *target;
+ 	uint32_t shader, tiler, l2mask, mmu, raw, slot, fault, fault_address;
+ 	bool ok = false, finished, tables_installed = false;
++	uint32_t keep_service = 0;
++	(void)PE_parse_boot_argn("mali_service", &keep_service, sizeof(keep_service));
+ 
+ 	mmu = s8g3d_read(gpu, S8_G3D_MMU_FEATURES);
+ 	if ((mmu & 0xffu) < 40u || ((mmu >> 8) & 0xffu) < 36u) {
+@@ -299,6 +315,25 @@ s8g3d_mmu_job_test(vm_offset_t gpu)
+ 		/* Do not free pages or page tables that a timed-out GPU may still use. */
+ 		goto retain;
+ 	}
++	if (keep_service == 1) {
++		/* Remove the temporary smoke-test mapping, but retain the live four-level
++		 * address space so the Panfrost service can add BO mappings later. */
++		l3[(gpu_va >> 12) & 0x1ffu] = 0;
++		FlushPoC_DcacheRegion((vm_offset_t)&l3[(gpu_va >> 12) & 0x1ffu], sizeof(uint64_t));
++		s8g3d_write(gpu, S8_GPU_AS0 + S8_GPU_AS_COMMAND, 1u);
++		if (!s8g3d_wait(gpu, S8_GPU_AS0 + S8_GPU_AS_STATUS, 1u, 0u, 500000)) goto retain;
++		for (unsigned i = 0; i < 4; i++) {
++			s8_mali_pt_va[i] = pages[i];
++			s8_mali_pt_pa[i] = phys[i];
++			pages[i] = 0;
++		}
++		s8_mali_regs = gpu;
++		s8_mali_service_ready = true;
++		kmem_free(kernel_map, pages[4], PAGE_SIZE);
++		pages[4] = 0;
++		printf("S8-MALI: persistent Panfrost address space ready; AS0 remains in 48-bit four-level mode\n");
++		return true;
++	}
+ 	/* Leave the address space safe before releasing its tables. */
+ 	s8g3d_write(gpu, S8_GPU_AS0 + S8_GPU_AS_TRANSTAB_LO, 0u);
+ 	s8g3d_write(gpu, S8_GPU_AS0 + S8_GPU_AS_TRANSTAB_HI, 0u);
+@@ -338,6 +373,202 @@ s8g3d_write(vm_offset_t base, uint32_t offset, uint32_t value)
+ 	__asm__ volatile("dsb oshst" ::: "memory");
+ }
+ 
++#define S8_GPU_MMU_INT_CLEAR 0x2004u
++#define S8_GPU_JS0           0x1800u
++#define S8_GPU_AS_UPDATE     1u
++#define S8_GPU_VA_FIRST      0x02000000ull
++#define S8_GPU_VA_END        0x100000000ull
++#define S8_GPU_VA_GRANULE    0x10000ull
++#define S8_GPU_VA_GRANULES   (S8_GPU_VA_END / S8_GPU_VA_GRANULE)
++#define S8_GPU_VA_EXEC_LINE  0x1000000ull
++#define S8_GPU_PT_SLOTS      1024u
++
++static uint64_t s8_mali_va_bits[S8_GPU_VA_GRANULES / 64];
++static uint64_t s8_mali_va_next = S8_GPU_VA_FIRST / S8_GPU_VA_GRANULE;
++static vm_offset_t s8_mali_extra_pt_va[S8_GPU_PT_SLOTS];
++static uint64_t s8_mali_extra_pt_pa[S8_GPU_PT_SLOTS];
++static uint32_t s8_mali_extra_pt_count;
++static uint64_t s8_mali_job_sequence;
++
++bool
++dreamlte_mali_ready(void)
++{
++	return s8_mali_service_ready;
++}
++
++static uint64_t *
++s8_mali_pt_by_pa(uint64_t pa)
++{
++	for (unsigned i = 0; i < 4; i++) if (s8_mali_pt_pa[i] == pa) return (uint64_t *)s8_mali_pt_va[i];
++	for (unsigned i = 0; i < s8_mali_extra_pt_count; i++) if (s8_mali_extra_pt_pa[i] == pa) return (uint64_t *)s8_mali_extra_pt_va[i];
++	return NULL;
++}
++
++static uint64_t *
++s8_mali_pt_child(uint64_t *table, unsigned index, bool create)
++{
++	uint64_t entry = table[index], pa = entry & 0x0000fffffffff000ull;
++	if (entry & 1u) return s8_mali_pt_by_pa(pa);
++	if (!create || s8_mali_extra_pt_count == S8_GPU_PT_SLOTS) return NULL;
++	vm_offset_t page = 0;
++	if (kmem_alloc(kernel_map, &page, PAGE_SIZE, KMA_KOBJECT | KMA_ZERO | KMA_DATA, VM_KERN_MEMORY_IOKIT) != KERN_SUCCESS) return NULL;
++	pa = kvtophys(page);
++	if (pa == 0 || (pa & 0xfffu) != 0 || (pa >> 40) != 0) { kmem_free(kernel_map, page, PAGE_SIZE); return NULL; }
++	unsigned slot = s8_mali_extra_pt_count++;
++	s8_mali_extra_pt_va[slot] = page;
++	s8_mali_extra_pt_pa[slot] = pa;
++	table[index] = pa | 3u;
++	FlushPoC_DcacheRegion((vm_offset_t)&table[index], sizeof(uint64_t));
++	return (uint64_t *)page;
++}
++
++static bool
++s8_mali_map_locked(uint64_t gpu_va, uint64_t phys)
++{
++	if (!s8_mali_service_ready || gpu_va >= (1ull << 48) || (gpu_va & 0xfffu) || (phys & 0xfffu) ||
++	    phys == 0 || (phys >> 40) != 0 || !pmap_valid_address(phys)) return false;
++	uint64_t *root=(uint64_t *)s8_mali_pt_va[0], *l1, *l2, *l3;
++	l1=s8_mali_pt_child(root,(gpu_va>>39)&0x1ffu,true);
++	l2=l1 ? s8_mali_pt_child(l1,(gpu_va>>30)&0x1ffu,true) : NULL;
++	l3=l2 ? s8_mali_pt_child(l2,(gpu_va>>21)&0x1ffu,true) : NULL;
++	if (!l3) return false;
++	unsigned i=(gpu_va>>12)&0x1ffu;
++	if (l3[i]&1u) return false;
++	l3[i]=(phys&0x0000fffffffff000ull)|(1ull<<10)|(3ull<<8)|(1ull<<6)|3ull;
++	FlushPoC_DcacheRegion((vm_offset_t)&l3[i],sizeof(uint64_t));
++	return true;
++}
++
++bool
++dreamlte_mali_map(uint64_t gpu_va, uint64_t phys)
++{
++	bool ok;
++	lck_mtx_lock(&s8_mali_pt_lock);
++	ok=s8_mali_map_locked(gpu_va,phys);
++	lck_mtx_unlock(&s8_mali_pt_lock);
++	return ok;
++}
++
++static bool
++s8_mali_as_update(void)
++{
++	s8g3d_write(s8_mali_regs,S8_GPU_AS0+S8_GPU_AS_COMMAND,S8_GPU_AS_UPDATE);
++	return s8g3d_wait(s8_mali_regs,S8_GPU_AS0+S8_GPU_AS_STATUS,1u,0u,500000);
++}
++
++bool
++dreamlte_mali_unmap(uint64_t gpu_va, uint64_t size)
++{
++	bool ok=true;
++	if (!s8_mali_service_ready || !size || (gpu_va&0xfffu) || (size&0xfffu) || gpu_va+size<gpu_va) return false;
++	lck_mtx_lock(&s8_mali_job_lock);
++	lck_mtx_lock(&s8_mali_pt_lock);
++	uint64_t *root=(uint64_t *)s8_mali_pt_va[0];
++	for(uint64_t va=gpu_va;va<gpu_va+size;va+=4096){
++		uint64_t *l1=s8_mali_pt_child(root,(va>>39)&0x1ffu,false);
++		uint64_t *l2=l1?s8_mali_pt_child(l1,(va>>30)&0x1ffu,false):NULL;
++		uint64_t *l3=l2?s8_mali_pt_child(l2,(va>>21)&0x1ffu,false):NULL;
++		if(l3){unsigned i=(va>>12)&0x1ffu;l3[i]=0;FlushPoC_DcacheRegion((vm_offset_t)&l3[i],sizeof(uint64_t));}
++	}
++	ok=s8_mali_as_update();
++	lck_mtx_unlock(&s8_mali_pt_lock);
++	lck_mtx_unlock(&s8_mali_job_lock);
++	return ok;
++}
++
++uint64_t
++dreamlte_mali_address(uint64_t size, bool executable)
++{
++	uint64_t count=(size+S8_GPU_VA_GRANULE-1)/S8_GPU_VA_GRANULE+1, first=S8_GPU_VA_FIRST/S8_GPU_VA_GRANULE;
++	uint64_t result=0;
++	if(!s8_mali_service_ready||!size||size>S8_GPU_VA_END-S8_GPU_VA_FIRST)return 0;
++	lck_mtx_lock(&s8_mali_pt_lock);
++	for(uint64_t pass=0;pass<2&&!result;pass++){
++		uint64_t start=pass==0?s8_mali_va_next:first;
++		for(uint64_t g=start;g+count<=S8_GPU_VA_GRANULES;){
++			uint64_t va=g*S8_GPU_VA_GRANULE,run=0;
++			if(executable&&size<=S8_GPU_VA_EXEC_LINE&&va/S8_GPU_VA_EXEC_LINE!=(va+size-1)/S8_GPU_VA_EXEC_LINE){g=((va/S8_GPU_VA_EXEC_LINE)+1)*(S8_GPU_VA_EXEC_LINE/S8_GPU_VA_GRANULE);continue;}
++			while(run<count&&!((s8_mali_va_bits[(g+run)/64]>>((g+run)%64))&1ull))run++;
++			if(run==count){for(uint64_t i=0;i<count;i++)s8_mali_va_bits[(g+i)/64]|=1ull<<((g+i)%64);result=va;s8_mali_va_next=g+count<S8_GPU_VA_GRANULES?g+count:first;break;}
++			g+=run+1;
++		}
++	}
++	lck_mtx_unlock(&s8_mali_pt_lock);
++	return result;
++}
++
++bool
++dreamlte_mali_free_address(uint64_t gpu_va,uint64_t size)
++{
++	uint64_t first=gpu_va/S8_GPU_VA_GRANULE,count=(size+S8_GPU_VA_GRANULE-1)/S8_GPU_VA_GRANULE+1;
++	if(gpu_va<S8_GPU_VA_FIRST||gpu_va%S8_GPU_VA_GRANULE||!size||first+count>S8_GPU_VA_GRANULES)return false;
++	lck_mtx_lock(&s8_mali_pt_lock);
++	for(uint64_t i=0;i<count;i++)if(!((s8_mali_va_bits[(first+i)/64]>>((first+i)%64))&1ull)){lck_mtx_unlock(&s8_mali_pt_lock);return false;}
++	for(uint64_t i=0;i<count;i++)s8_mali_va_bits[(first+i)/64]&=~(1ull<<((first+i)%64));
++	lck_mtx_unlock(&s8_mali_pt_lock);return true;
++}
++
++bool
++dreamlte_mali_parameter(uint32_t which,uint64_t *value)
++{
++	if(!s8_mali_service_ready||!value)return false;
++	switch(which){
++	case 0:*value=s8g3d_read(s8_mali_regs,0)>>16;return true;
++	case 1:*value=s8g3d_read(s8_mali_regs,0)&0xffffu;return true;
++	case 2:*value=s8g3d_read(s8_mali_regs,0x100)|((uint64_t)s8g3d_read(s8_mali_regs,0x104)<<32);return true;
++	case 3:*value=s8g3d_read(s8_mali_regs,0x110);return true;
++	case 4:*value=s8g3d_read(s8_mali_regs,0x120);return true;
++	case 5:*value=s8g3d_read(s8_mali_regs,0xe00);return true;
++	case 6:*value=s8g3d_read(s8_mali_regs,0x18);return true;
++	case 7:*value=s8g3d_read(s8_mali_regs,0x1c);return true;
++	case 8:*value=s8g3d_read(s8_mali_regs,0x4);return true;
++	case 9:*value=s8g3d_read(s8_mali_regs,0x8);return true;
++	case 10:*value=s8g3d_read(s8_mali_regs,0xc);return true;
++	case 11:*value=s8g3d_read(s8_mali_regs,0x10);return true;
++	case 12:*value=s8g3d_read(s8_mali_regs,0x14);return true;
++	case 38:*value=1;return true;
++	case 39:*value=s8g3d_read(s8_mali_regs,0x310);if(*value<s8g3d_read(s8_mali_regs,0xa0))*value=s8g3d_read(s8_mali_regs,0xa0);return true;
++	case 40:*value=0;return true;
++	default:
++		if(which>=13&&which<=21){static const uint16_t offsets[]={0xac,0xa0,0xa4,0xa8,0x300,0xb0,0xb4,0xb8,0xbc};*value=s8g3d_read(s8_mali_regs,offsets[which-13]);return true;}
++		if(which>=22&&which<=37){*value=s8g3d_read(s8_mali_regs,0xc0+(which-22)*4);return true;}
++		return false;
++	}
++}
++
++uint64_t
++dreamlte_mali_submit(uint64_t chain,bool fragment)
++{
++	uint32_t slot=fragment?0u:1u,js=fragment?S8_GPU_JS0:S8_GPU_JS1;
++	bool done;
++	if(!s8_mali_service_ready||!chain)return 0;
++	lck_mtx_lock(&s8_mali_job_lock);
++	if (!s8_mali_as_update()) {
++		lck_mtx_unlock(&s8_mali_job_lock);
++		printf("S8-MALI: Panfrost job refused; AS0 invalidation timed out\\n");
++		return 0;
++	}
++	s8g3d_write(s8_mali_regs,S8_GPU_JOB_CLEAR,(1u<<slot)|(1u<<(slot+16)));
++	s8g3d_write(s8_mali_regs,js+0x40,(uint32_t)chain);
++	s8g3d_write(s8_mali_regs,js+0x44,(uint32_t)(chain>>32));
++	s8g3d_write(s8_mali_regs,js+0x50,s8g3d_read(s8_mali_regs,S8_GPU_SHADER_PRESENT));
++	s8g3d_write(s8_mali_regs,js+0x54,0);
++	s8g3d_write(s8_mali_regs,js+0x58,(3u<<8)|(3u<<12)|(8u<<16));
++	s8g3d_write(s8_mali_regs,js+0x60,1);
++	done=s8g3d_wait(s8_mali_regs,S8_GPU_JOB_RAWSTAT,(1u<<slot)|(1u<<(slot+16)),1u<<slot,100000000u);
++	if(done){s8g3d_write(s8_mali_regs,S8_GPU_JOB_CLEAR,(1u<<slot)|(1u<<(slot+16)));s8_mali_job_sequence++;}
++	else{printf("S8-MALI: Panfrost job timeout chain=%#llx raw=%#x status=%#x fault=%#x address=%#x\\n",chain,s8g3d_read(s8_mali_regs,S8_GPU_JOB_RAWSTAT),s8g3d_read(s8_mali_regs,js+0x24),s8g3d_read(s8_mali_regs,S8_GPU_AS0+0x1c),s8g3d_read(s8_mali_regs,S8_GPU_AS0+0x20));}
++	lck_mtx_unlock(&s8_mali_job_lock);
++	return done?s8_mali_job_sequence:0;
++}
++
++bool
++dreamlte_mali_wait(uint64_t sequence,int64_t timeout_ns)
++{
++	(void)timeout_ns;
++	return s8_mali_service_ready&&sequence!=0&&sequence<=s8_mali_job_sequence;
++}
++
+ /* First write-enabled milestone: explicit, low 200-MHz route through CMU_TOP. */
+ static bool
+ s8g3d_clock_200(vm_offset_t cmu, vm_offset_t top, uint32_t pd_status, uint32_t gpu_id)
+@@ -464,7 +695,10 @@ dreamlte_mali_probe(void)
+ 		}
+ 		bool identity_ok = s8g3d_job_test(gpu);
+ 		if (identity_ok && mmu_job_test == 1) {
+-			(void)s8g3d_mmu_job_test(gpu);
++			bool mmu_ok = s8g3d_mmu_job_test(gpu);
++			uint32_t service = 0;
++			(void)PE_parse_boot_argn("mali_service", &service, sizeof(service));
++			if (mmu_ok && service == 1 && s8_mali_service_ready) HakiosMaliStart();
+ 		} else if (mmu_job_test == 1) {
+ 			printf("S8-MALI: MMU job not attempted; identity-mode job did not pass\n");
+ 		}
+diff --git a/iokit/conf/files.arm64 b/iokit/conf/files.arm64
+index acc9ae0..6cc0dba 100644
+--- a/iokit/conf/files.arm64
++++ b/iokit/conf/files.arm64
+@@ -15,6 +15,7 @@ iokit/Kernel/arm/SweetKeyStore.cpp                               optional iokitc
+ iokit/Kernel/arm/SweetWatchdog.cpp                               optional iokitcpp
+ iokit/Kernel/arm/SweetSurface.cpp                                optional iokitcpp
+ iokit/Kernel/arm/SweetFramebuffer.cpp                            optional iokitcpp
++iokit/Kernel/arm/DreamlteMali.cpp                              optional iokitcpp
+ iokit/Kernel/arm/SweetBattery.cpp                                optional iokitcpp
+ iokit/Kernel/arm/hid/SweetHID.cpp                                optional iokitcpp
+ iokit/Kernel/arm/hid/IOHIDEvent.cpp                              optional iokitcpp

@@ -1,0 +1,16 @@
+diff --git a/bsd/dev/dreamlte_mali_probe.c b/bsd/dev/dreamlte_mali_probe.c
+index ac3758f..b2830da 100644
+--- a/bsd/dev/dreamlte_mali_probe.c
++++ b/bsd/dev/dreamlte_mali_probe.c
+@@ -695,7 +695,10 @@ dreamlte_mali_probe(void)
+ 		}
+ 		bool identity_ok = s8g3d_job_test(gpu);
+ 		if (identity_ok && mmu_job_test == 1) {
+-			(void)s8g3d_mmu_job_test(gpu);
++			bool mmu_ok = s8g3d_mmu_job_test(gpu);
++			uint32_t service = 0;
++			(void)PE_parse_boot_argn("mali_service", &service, sizeof(service));
++			if (mmu_ok && service == 1 && s8_mali_service_ready) HakiosMaliStart();
+ 		} else if (mmu_job_test == 1) {
+ 			printf("S8-MALI: MMU job not attempted; identity-mode job did not pass\n");
+ 		}
