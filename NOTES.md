@@ -19,6 +19,23 @@ capacity change is confirmed. ADB is not expected once iOS is running. The
 interrupted local USERDATA prefix dump is incomplete and is not a usable
 backup; it is outside git.
 
+**Latest user report (2026-11-07):** after restoring the known 512-MiB BOOT
+image, the phone booted to iOS, but the UI remains extremely sluggish. Treat
+this as a physical screen report only; the user confirms the screen state and
+ADB is not expected in iOS. No graphics acceleration is verified. The GPU
+smoke test's single `WRITE_VALUE` is still the only G71 execution result.
+The previous 2-GiB diagnostic BOOT was removed from p7 when the full 512-MiB
+image was restored. Keep the user's current bootable image intact while
+working on the software path.
+
+The S9 HakiosMali sources were audited but not transplanted: its power and
+clock sequence targets Exynos9810 (`0x14060000` PMU, `0x17400000` CMU,
+`0x17500000` Mali, ACPM/DTZPC), while dreamlte uses Exynos8895
+(`0x16480000`, `0x13800000`, `0x13900000`) and SweetSurface/S-Boot scanout.
+Next code step: implement and build a DREAMLTE-specific persistent MMU/job
+service and Panfrost user-client, then connect EAGL/OSMesa and the framebuffer.
+Do not report acceleration until a GLES render is verified on-screen.
+
 Patch `0129` adds an opt-in Mali-G71 reset/core/job-manager smoke test that
 checks whether a GPU `WRITE_VALUE` reaches kernel memory; it is not a GLES
 driver or accelerated compositor. CI run `42317239859` passed. The 2-GiB

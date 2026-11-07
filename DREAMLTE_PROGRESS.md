@@ -379,3 +379,24 @@ to the pmsg zone and read from TWRP as `/sys/fs/pstore/pmsg-ramoops-0`.
   2-GiB image is no longer on p7. If retrying this diagnostic, obtain a close,
   legible panic photo or another persistent log source before changing RAM
   settings again.
+
+## 2026-11-07 — latest physical boot report and GPU port audit
+
+- After the 2-GiB trial panic, the complete previously verified 512-MiB BOOT
+  image was restored to p7 and read back as noted above. The user now reports
+  that this image booted to iOS, which is the current physical screen report.
+  The user also reports that iOS remains extremely sluggish. No new runtime log
+  or GPU acceleration result is available; the earlier one-shot G71 memory
+  write remains the only GPU execution proof.
+- Audited the S9 `hakios.mali.c/.cpp` sources against the S8/LinuxS8 hardware
+  map. S9's power path is tied to Exynos9810 PMU/CMU/Mali addresses
+  `0x14060000`/`0x17400000`/`0x17500000`, ACPM BUCK6 and DTZPC SMC; S8 uses
+  `0x16480000`/`0x13800000`/`0x13900000` and a different CMU_TOP clock path.
+  The C++ service also assumes `MiniIOSurface` and S9 display helpers, while
+  this port exposes `SweetSurface` and its S-Boot framebuffer. None of that
+  S9-specific hardware/display code has been copied into the S8 kernel.
+- Updated `docs/dreamlte-gpu-port.md` with this port audit and the required
+  implementation layers: reusable S8 MMU/job service, Panfrost BO/fence
+  user-client, then EAGL/OSMesa and SweetSurface scanout integration. The next
+  code milestone is the first S8-specific reusable kernel service. Current
+  iOS remains software-rendered; acceleration is not implemented yet.
