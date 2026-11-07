@@ -28,25 +28,38 @@ The previous 2-GiB diagnostic BOOT was removed from p7 when the full 512-MiB
 image was restored. Keep the user's current bootable image intact while
 working on the software path.
 
+**Latest physical test result (2026-11-07):** BOOT p7 was read back in full
+before the new image was written; it matched the known rollback. The MMU test
+image was then written only to p7 and its complete candidate prefix matched
+on readback. The user reports that iOS started, then returned the phone to
+TWRP. The USERDATA console ring was pulled read-only to `/tmp/sweetlog-mmu.txt`
+and reports `S8-MALI: GPU MMU WALK PASS; va=0x100000 value=0x51a8c0de
+raw=0x2 slot=0 fault=0 at=0`, after the identity-mode write test also passed.
+SpringBoard ran. The user still reports severe lag. This is physical proof of
+a G71 job through page tables, not GLES rendering or accelerated composition.
+The log and pmsg stay outside git. Current next work is a persistent Panfrost
+user-client and the EAGL/OSMesa/display path; do not say GPU acceleration works
+yet.
+
 The S9 HakiosMali sources were audited but not transplanted: its power and
 clock sequence targets Exynos9810 (`0x14060000` PMU, `0x17400000` CMU,
 `0x17500000` Mali, ACPM/DTZPC), while dreamlte uses Exynos8895
 (`0x16480000`, `0x13800000`, `0x13900000`) and SweetSurface/S-Boot scanout.
-The first step is now implemented as uncommitted patch `0131`: an opt-in
+The first step is implemented in commit `405580d` as patch `0131`: an opt-in
 four-level GPU MMU page-walk smoke test using one allocated kernel page and a
 `WRITE_VALUE` job at GPU VA `0x100000`. It returns AS0 to identity mode before
 freeing the tables and retains pages if GPU completion or invalidation is
-uncertain. Patch application and whitespace checks pass; kernel CI compile and
-Actions run `42361163053` compiled it successfully (kernel SHA-256
+uncertain. Patch application and whitespace checks pass; Actions run
+`42361163053` compiled it successfully (kernel SHA-256
 `a9b88b763bffafcca3fee0f4dce8d5e933f06d44fee0a818338b8690d1baba86`). The
 512-MiB candidate `/tmp/s8-ios-mali-mmu-walk-512m.img` is built and parsed
 (hash `4c8cd95b936ec01eefe44855823d401cee93c1206b61cb5457dbed210dfcac79`);
 its command line includes `mali_probe=3 mali_clock=200 mali_job=1
-mali_mmu_job=1`, and its ADT exposes only 512 MiB. It has not been flashed
-because the user reports the phone is currently in iOS. This is still not a
-user buffer driver. Next run this MMU test from TWRP, then implement the
-persistent Panfrost user-client and EAGL/OSMesa/framebuffer path. Do not report
-acceleration until a GLES render is verified on-screen.
+mali_mmu_job=1`, and its ADT exposes only 512 MiB. It was flashed only to p7,
+read back exactly, and run; the physical result is recorded above. This is
+still not a user buffer driver. Next implement the persistent Panfrost
+user-client and EAGL/OSMesa/framebuffer path. Do not report acceleration until
+a GLES render is verified on-screen.
 
 Patch `0129` adds an opt-in Mali-G71 reset/core/job-manager smoke test that
 checks whether a GPU `WRITE_VALUE` reaches kernel memory; it is not a GLES

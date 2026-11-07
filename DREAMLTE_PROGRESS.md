@@ -424,3 +424,29 @@ to the pmsg zone and read from TWRP as `/sys/fs/pstore/pmsg-ramoops-0`.
   base `0x880000000`, size `0x20000000` (512 MiB). The payload contains the
   same command line. This candidate has not been flashed; the user reports the
   phone is currently running iOS, so physical MMU-walk validation awaits TWRP.
+
+
+## 2026-11-07 — G71 page-table walk verified on phone
+
+- After the user reported iOS startup and then entered TWRP, ADB enumerated
+  `omni_dreamlte` recovery. Read the final 1025 blocks of USERDATA and decoded
+  the SWEET console ring to `/tmp/sweetlog-mmu.txt` (kept out of git), plus
+  pmsg to `/tmp/pmsg-mmu.txt`.
+- The ring records the exact test boot arguments, four CPUs, SpringBoard
+  execution, G71 `GPU_ID=0x60a00001` / `MMU_FEATURES=0x2830`, and both jobs:
+  `GPU WRITE_VALUE PASS` followed by
+  `GPU MMU WALK PASS; va=0x100000 value=0x51a8c0de raw=0x2 slot=0 fault=0 at=0`.
+  This verifies the G71 walked the four-level AArch64 page tables and wrote
+  through GPU virtual address 0x100000; no MMU fault was recorded. The user
+  reports the UI remains sluggish, so this is still not iOS graphics
+  acceleration.
+- BOOT p7 was confirmed as the 40-MiB `/dev/block/sda7` partition by the
+  TWRP `by-name/BOOT` symlink. Its full pre-write readback matched the saved
+  rollback image (SHA-256 `44c139697b87255d958c4a5dbb03f27b4eb8cacf003a174b12aa4e747535631f`).
+  The test candidate's 17,700,880-byte prefix was written to p7 and read back
+  byte-for-byte (SHA-256
+  `4c8cd95b936ec01eefe44855823d401cee93c1206b61cb5457dbed210dfcac79`).
+  No other partition was written. The user later brought the phone back to
+  TWRP; the MMU result was collected read-only.
+- Next implement the persistent Panfrost request service atop the now-verified
+  S8 GPU page-table/job path, then GLES/EAGL and framebuffer integration.
