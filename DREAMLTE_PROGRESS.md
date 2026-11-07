@@ -342,5 +342,40 @@ to the pmsg zone and read from TWRP as `/sys/fs/pstore/pmsg-ramoops-0`.
   adapting the Mali register, MMU, memory, cache and interrupt work for G71 /
   Exynos 8895. Keep existing software rendering as fallback. Do not call the
   one-shot job result UI acceleration. RAM above 512 MiB remains a separate
-  issue: both 2-GiB trials panicked in `kmem_range_init`; the new 0130
-  diagnostic image remains unflashed.
+  issue: two 2-GiB trials panicked in `kmem_range_init`; the latest 0130
+  diagnostic image is flashed to BOOT p7, and its log is not yet recovered.
+
+## 2026-11-07 — Mesa model match and 2-GiB diagnostic boot
+
+- Inspected the same-device LinuxS8 graphics report at repository commit
+  `d9a548f`. It reports hardware Panfrost and Mesa `GL_RENDERER = Mali-G71
+  MC20 (Panfrost)` on the S8, while its GNOME desktop stays on software due to
+  `simpledrm` having no KMS. This supports the G71 hardware path but does not
+  verify iOS EAGL or SpringBoard integration.
+- Fetched official Mesa 25.0.7, 25.2.0 and 26.1.2 sources into `/tmp`. The S9
+  project's complete ten-patch Mesa series applies cleanly to 25.0.7. Mesa
+  25.0.7's Panfrost model table expects `GPU_PROD_ID=0x6000`, but this phone's
+  verified `GPU_ID=0x60a00001` yields `GPU_PROD_ID=0x60a0` through the S9 uAPI.
+  Added `tools/dreamlte/mesa/0001-panprops-match-s8-g71-r0a.patch` to match this
+  exact S8 revision. It applies after the S9 series. Mesa 25.2.0/26.1.2 do not
+  have the OSMesa target paths used by the S9 EAGL build, so the 25.0.7 path
+  with this narrow model-table adjustment is the current integration target.
+  No Mesa cross-build has run yet.
+- Revalidated TWRP root ADB, product `dreamlte`, and BOOT p7. The full current
+  BOOT backup hash was `44c139697b87255d958c4a5dbb03f27b4eb8cacf003a174b12aa4e747535631f`.
+  Wrote the 2-GiB diagnostic image only to BOOT p7; its exact 17,700,880-byte
+  readback matched SHA-256
+  `bc0ad839f5f4729cab1793c6fc29d4a53f95ae7196692a943e8a90320adac8ec`.
+  No USERDATA, recovery, EFS or bootloader partition was written.
+- After `adb reboot`, USB disconnected. The user supplied a photo showing an
+  XNU panic instead of iOS. The 2-GiB image was intentionally built to expose
+  `kmem_range_init` claim diagnostics, but the photo is not legible enough to
+  identify the claim. TWRP then reappeared. Its pstore contained only TWRP
+  startup, while the USERDATA ring remained at the prior iOS boot (flush #32),
+  so no new panic log was available. The full 40-MiB known 512-MiB BOOT image
+  was restored to p7 and read back exactly (SHA-256
+  `44c139697b87255d958c4a5dbb03f27b4eb8cacf003a174b12aa4e747535631f`). Then
+  `adb reboot` was issued to return to the known iOS-booting image. The failed
+  2-GiB image is no longer on p7. If retrying this diagnostic, obtain a close,
+  legible panic photo or another persistent log source before changing RAM
+  settings again.

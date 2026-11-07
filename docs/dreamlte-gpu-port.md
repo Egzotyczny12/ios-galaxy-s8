@@ -2,11 +2,11 @@
 
 ## Current state
 
-The iOS port currently uses the S-Boot framebuffer and CPU rendering. Patch 0129 contains an opt-in, one-shot G71 `WRITE_VALUE` smoke test, but there is no reusable Mali job/MMU driver, GLES userspace path, or accelerated compositor. Apple's bundled AGX driver targets Apple GPUs, so the route is a Panfrost-compatible Mali backend plus a GLES path, not an AGX boot flag.
+The iOS port currently uses the S-Boot framebuffer and CPU rendering. The opt-in, one-shot G71 `WRITE_VALUE` smoke test has passed on the phone, but there is no reusable Mali job/MMU driver, GLES userspace path, or accelerated compositor. Apple's bundled AGX driver targets Apple GPUs, so the route is a Panfrost-compatible Mali backend plus a GLES path, not an AGX boot flag.
 
 ## Same-device hardware evidence: LinuxS8
 
-[`MakrSas/LinuxS8`](https://github.com/MakrSas/LinuxS8) documents a successful Panfrost bring-up on the same Galaxy S8 / Exynos 8895 / Mali-G71 MP20. Its maintainer reports `GPU_ID=0x60a00001`, `shader_present=0x17771777` (20 shader cores), and Mesa reporting `Mali-G71 MC20 (Panfrost)`. This is strong hardware-specific evidence, but it is a maintainer report and has not been reproduced from this checkout.
+[`MakrSas/LinuxS8`](https://github.com/MakrSas/LinuxS8) documents a hardware-tested Panfrost bring-up on the same Galaxy S8 / Exynos 8895 / Mali-G71 MP20. Its current `docs/graphics.md` reports `GPU_ID=0x60a00001`, `shader_present=0x17771777` (20 shader cores), and `GL_RENDERER = Mali-G71 MC20 (Panfrost)` using Mesa 26.1.2. The same report says its GNOME/Mutter desktop remains on software rendering because `simpledrm` provides no KMS device. This is useful same-device evidence, but does not prove the iOS port's GLES/EAGL path.
 
 The documented Linux setup requires the G3D power domain at PMU `0x16480000 + 0x40e0`, CMU_G3D at `0x13800000`, Mali registers at `0x13900000` (0x5000 bytes), and a sufficiently recent Mesa build (the project reports 26.1.2). Their clock path uses the CMU_TOP G3D switch output; do not copy S9/Exynos9810 voltage or clock programming into this S8 port.
 
@@ -26,7 +26,13 @@ Relevant pieces in that repository:
 - `core/userland/src/eagl.c` and the userland setup: connect the iOS graphics stack to GLES.
 - `baseline-support/`: additional mapping/cache changes referenced by that port.
 
-The repository README and installed profile report hardware GLES testing on the S9+. I have not independently reproduced that result. The port's Metal-to-Vulkan work is separate and marked WIP; the installed path is GLES/Panfrost.
+The repository README and installed profile report hardware GLES testing on the S9+. I have not independently reproduced that result. Its Mesa build pins 25.0.7 and uses OSMesa behind a private EAGL bridge; the port's Metal-to-Vulkan work is separate and marked WIP.
+
+## Mesa version for the S8 EAGL path
+
+The S9 userland uses Mesa 25.0.7's OSMesa target behind its EAGL bridge. The S8 reports `GPU_ID=0x60a00001`, so the Panfrost `GPU_PROD_ID` value returned by the S9-style uAPI is `0x60a0`. Mesa 25.0.7's `panfrost_get_model()` compares that value exactly against the G71 table entry `0x6000`, so the stock table does not recognize this S8 stepping. The local patch `tools/dreamlte/mesa/0001-panprops-match-s8-g71-r0a.patch` changes the entry to `0x60a0`, matching the measured S8 ID only.
+
+I applied the complete S9 Mesa patch series in its documented order to the pinned Mesa 25.0.7 source, then applied this S8 model-ID patch; all patches applied without rejects. Mesa 25.2.0 and 26.1.2 no longer contain the OSMesa target/source paths used by the S9 `mk-mesa.sh`, although their Panfrost model lookup masks the revision bits. Therefore the immediate S8 EAGL port can retain Mesa 25.0.7 and its OSMesa bridge with the narrow model-ID change, rather than switching Mesa APIs and rebuilding the EAGL backend. This is source-level integration evidence only; no S8 GLES library has been built or run yet.
 
 ## Other requested repositories
 
@@ -42,16 +48,11 @@ backend. The standalone `hakios-metal` repository has since moved into
 `hakios-xnu-kernel/hakios-metal/`.
 
 For S8 the closest reusable GPU path remains S9+'s `HakiosMali` service and
-Mesa/Panfrost request transport. Its G72/Exynos9810 bring-up must be adapted
-for G71 and Exynos8895 power, clocks, interrupts, memory and cache behavior.
-The current safe experiment is the flashed `mali_probe=1` image. Its kernel
-log is needed before attempting writes to PMU or CMU registers. A separate
-`mali_probe=2` image is prepared but not flashed (SHA-256
-`b17a839c31030b9044b86e6452ceaa437eb6f081c51b0fa4ed80475ac7694cae`); it only
-reads G71 registers when the PMU already reports the domain on. After measured
-state is available, the next steps are a separate opt-in power/clock stage,
-GPU identity and minimal job validation, then the Panfrost user client and iOS
-rendering integration.
+Mesa/Panfrost request transport. Its G72/Exynos9810 initialization must be
+adapted for the measured G71 and Exynos8895 power, clocks, interrupts, memory
+and cache behavior. The iOS kernel now verifies the 200-MHz route and a single
+G71 `WRITE_VALUE` job; the persistent buffer/MMU service, Mesa library, EAGL
+bridge and compositor integration remain to be built.
 
 ## What transfers and what does not
 
@@ -75,9 +76,9 @@ The LinuxS8 report records successful G71 reads on this model: `GPU_ID=0x60a0000
 3. The guarded job smoke test is verified at the 512-MiB setting. The recovered USERDATA ring records `S8-MALI: GPU WRITE_VALUE PASS`, IRQ `0x2`, and sentinel `0xc0ffee01` on the physical G71. This proves a single job can access kernel memory; it does not render the UI.
 4. Build a reusable Mali service and Panfrost transport, adapting the S9 request interface to Exynos 8895 and this fork's IOKit/IOSurface APIs. Keep S9-specific power, voltage, clocks, MMU and cache assumptions out until independently validated for the S8.
 5. Build a minimal Darwin/Panfrost transport and userspace GLES stack. Validate memory allocation, cache coherency, MMU mapping, job completion and interrupt/polling behavior before exposing it to applications.
-6. Add an off-screen GLES render check, retaining CPU rendering as fallback. Then adapt the existing `SweetSurface`/compositor path and profile the complete frame pipeline. RAM remains separate: two 2-GiB boots previously panicked in `kmem_range_init`; patch `0130` adds claim-size/map-bound diagnostics, and its 2-GiB image remains unflashed.
+6. Add an off-screen GLES render check, retaining CPU rendering as fallback. Then adapt the existing `SweetSurface`/compositor path and profile the complete frame pipeline. RAM remains separate: two earlier 2-GiB boots panicked in `kmem_range_init`; a third diagnostic 2-GiB boot also panicked, but its claim details were not legible in the photo and the persistent logs did not capture that attempt. The known 512-MiB image has since been restored to BOOT p7.
 
-The checkout includes the kernel archive and ordered patch workflow; the reconstructed XNU source tree is temporary build input. Patches 0125–0128 built in Actions runs `42299498637`, `42311503465`, `42313291998`, and `42315170764`; patch 0129's opt-in G71 `WRITE_VALUE` job built in run `42317239859`. The preceding 512-MiB `mali_probe=3 mali_clock=200 mali_job=1` boot confirmed SpringBoard, four initialized CPUs, PMU `0x3000f`, G71 ID `0x60a00001`, and matching clock route readbacks. The recovered USERDATA ring now confirms `S8-MALI: GPU WRITE_VALUE PASS`, IRQ `0x2`, and sentinel `0xc0ffee01` at PA `0x883ade000`. This verifies one GPU job and a GPU memory write on the phone, not GLES or accelerated composition; the user still reports a very sluggish UI with no visible acceleration. Neither 2-GiB job trial reached the GPU hook: both stopped in `kmem_range_init`, one also setting `vm_compression_limit=2097152`. Patch 0130 adds the failed claim's name/size and the map/constraint bounds to the early panic; CI run `42357416273` succeeded (kernel SHA-256 `6770d6ad86ef81b1eabb0d34088e61821afde52b0541be5eb165479df9f9e08a`). The 512-MiB diagnostic image `/tmp/s8-ios-mali-job-diagnostic-512m.img` (SHA-256 `d8419c6301e53faa8f1b5438c4257cf30af2702b3109122bd8eefee2a2569183`) is on BOOT p7 and was read back exactly. A 2-GiB diagnostic image is prepared but unflashed. TWRP reports three RAM ranges and about 3.4 GiB usable; the high 2-GiB range is the only one documented free of firmware carve-outs. The XNU handoff still describes one contiguous physical range, so using RAM beyond that bank requires discontiguous-memory support. The USERDATA HFSX reflash and zeroing were verified on 2026-11-07.
+The checkout includes the kernel archive and ordered patch workflow; the reconstructed XNU source tree is temporary build input. Patches 0125–0128 built in Actions runs `42299498637`, `42311503465`, `42313291998`, and `42315170764`; patch 0129's opt-in G71 `WRITE_VALUE` job built in run `42317239859`. The preceding 512-MiB `mali_probe=3 mali_clock=200 mali_job=1` boot confirmed SpringBoard, four initialized CPUs, PMU `0x3000f`, G71 ID `0x60a00001`, and matching clock route readbacks. The recovered USERDATA ring now confirms `S8-MALI: GPU WRITE_VALUE PASS`, IRQ `0x2`, and sentinel `0xc0ffee01` at PA `0x883ade000`. This verifies one GPU job and a GPU memory write on the phone, not GLES or accelerated composition; the user still reports a very sluggish UI with no visible acceleration. Two prior 2-GiB boots stopped in `kmem_range_init`; a third 2-GiB diagnostic image with patch 0130 was written only to BOOT p7 and the user supplied a photo of an XNU panic. The diagnostic claim is still unknown because logs have not yet been retrieved. Patch 0130 adds claim-name/size and map/constraint fields; CI run `42357416273` succeeded (kernel SHA-256 `6770d6ad86ef81b1eabb0d34088e61821afde52b0541be5eb165479df9f9e08a`). The diagnostic 2-GiB image's exact 17,700,880-byte BOOT p7 readback matched SHA-256 `bc0ad839f5f4729cab1793c6fc29d4a53f95ae7196692a943e8a90320adac8ec`. TWRP reports three RAM ranges and about 3.4 GiB usable; the high 2-GiB range is the only one documented free of firmware carve-outs. The XNU handoff still describes one contiguous physical range, so using RAM beyond that bank requires discontiguous-memory support. The USERDATA HFSX reflash and zeroing were verified on 2026-11-07.
 
 ## References
 
