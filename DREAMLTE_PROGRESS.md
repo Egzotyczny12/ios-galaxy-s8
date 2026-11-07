@@ -244,3 +244,34 @@ to the pmsg zone and read from TWRP as `/sys/fs/pstore/pmsg-ramoops-0`.
   `backup/pre-userdata-reflash/BOOT.current.img` (SHA-256
   `9196ce9d3d79ed8763ef168fbf636aa9c3596adef6f924aecd04ec5bcd051618`),
   preserving a verified rollback image before the next BOOT trial.
+
+## 2026-11-07 — G71 job test and 2-GiB trial
+
+- Recovered the previous boot's USERDATA console ring from TWRP. It shows
+  `SpringBoard` executed, `cpus=4` initialized all four A53 CPUs, and XNU had
+  118,643 free 4-KiB pages (about 463 MiB) with the 512-MiB ADT bank. The
+  S8-MALI probe recorded PMU status `0x3000f`, GPU ID `0x60a00001`, and matching
+  200-MHz CMU route register readbacks. No GPU job had yet been run.
+- Linux/TWRP report three physical RAM ranges: `0x80000000..0xbc7fffff`,
+  `0xc0000000..0xffffffff`, and `0x880000000..0x8ffffffff`; total usable by
+  TWRP is about 3.4 GiB. Only the last, contiguous 2-GiB range is recorded as
+  free of firmware carve-outs. XNU still takes one contiguous `dram-base` /
+  `dram-size`, so 4 GiB is not safely exposed by setting a larger size.
+- Patch `0129-dreamlte-mali-write-job.patch` corrects the Mali shader-present
+  register offset from `0x1000` to `0x100`, then adds an opt-in `mali_job=1`
+  stage, guarded by PMU-on, G71 identity, and successful 200-MHz clock readback.
+  It resets the G71, powers L2/shader/tiler, sets AS0 to identity mode, submits
+  a Panfrost-compatible `WRITE_VALUE` job, and checks the kernel page for the
+  written sentinel. It does not yet render GLES or accelerate the display.
+  CI run `42317239859` succeeded (the A53 LSE scan reported the same single
+  pre-existing LSE marker as preceding runs; the workflow passed).
+- Built `/tmp/s8-ios-mali-job-2g.img` from that kernel with `cpus=4`,
+  `mali_probe=3 mali_clock=200 mali_job=1`, and ADT base `0x880000000`, size
+  `0x80000000`. SHA-256 is
+  `f8093d74dd008448031a33a033244aa40aa740bbd7b310743799fbf1f2d8c4d9`.
+  Captured the complete current 40-MiB BOOT before replacing it at
+  `/tmp/s8-boot-sda7-clock200-full.img` (SHA-256
+  `7cb6e5f7047f9a2ded3918b517144b0269bde1f1e9ccd1b764f7d2891122c0e7`).
+  Wrote the candidate only to `/dev/block/sda7`; its 17-MiB prefix readback
+  matched the candidate hash. Reboot was issued. Device runtime / pstore result
+  is pending. The preserved rollback is the faster 200-MHz image.

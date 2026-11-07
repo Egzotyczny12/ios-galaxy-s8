@@ -48,11 +48,19 @@ pages; no GPU job had run. The guarded probe recorded PMU status `0x3000f`,
 G71 ID `0x60a00001`, and matching 200-MHz route register readbacks. Its
 `shader_present` was read from the wrong offset (`0x1000`); patch `0129` fixes
 that to `0x100` and adds an opt-in G71 reset/core/job-manager test that verifies
-a GPU `WRITE_VALUE` against kernel memory. This is still a compute smoke test,
-not display acceleration. The next BOOT candidate will pair it with the full,
-firmware-free 2-GiB high bank. The full 4-GiB RAM map is non-contiguous and
-cannot be exposed by increasing `dram-size`. See `DREAMLTE_PROGRESS.md` and
-`docs/dreamlte-gpu-port.md`. Keep images, backups and phone dumps out of git.
+a GPU `WRITE_VALUE` against kernel memory. CI run `42317239859` passed. Image
+`/tmp/s8-ios-mali-job-2g.img` (SHA-256
+`f8093d74dd008448031a33a033244aa40aa740bbd7b310743799fbf1f2d8c4d9`) sets
+`mali_probe=3 mali_clock=200 mali_job=1` and ADT `dram-size=0x80000000`. It was
+flashed only to `/dev/block/sda7`; the 17-MiB image prefix readback matched
+exactly. A full 40-MiB readback of the faster 200-MHz BOOT is preserved outside
+git at `/tmp/s8-boot-sda7-clock200-full.img` (SHA-256
+`7cb6e5f7047f9a2ded3918b517144b0269bde1f1e9ccd1b764f7d2891122c0e7`). The
+device was rebooted; runtime stability, memory and job result are pending. Even
+a passing job is only a compute smoke test, not display acceleration. The full
+4-GiB RAM map is non-contiguous and cannot be exposed by increasing
+`dram-size`. See `DREAMLTE_PROGRESS.md` and `docs/dreamlte-gpu-port.md`. Keep
+images, backups and phone dumps out of git.
 
 ## a5xelte fork handoff (2026-10-20)
 
