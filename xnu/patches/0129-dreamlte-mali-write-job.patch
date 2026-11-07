@@ -1,0 +1,211 @@
+diff --git a/bsd/dev/dreamlte_mali_probe.c b/bsd/dev/dreamlte_mali_probe.c
+index 4b756c0..8044e86 100644
+--- a/bsd/dev/dreamlte_mali_probe.c
++++ b/bsd/dev/dreamlte_mali_probe.c
+@@ -8,8 +8,12 @@
+ #include <sys/systm.h>
+ #include <machine/machine_routines.h>
+ #include <pexpert/pexpert.h>
++#include <vm/vm_kern.h>
++#include <mach/vm_param.h>
+ 
+ extern vm_offset_t ml_io_map(vm_offset_t, vm_size_t);
++extern uint64_t kvtophys(vm_offset_t);
++extern void FlushPoC_DcacheRegion(vm_offset_t, size_t);
+ 
+ #define S8_G3D_PMU_PA       0x16480000u
+ #define S8_G3D_PMU_SIZE     0x5000u
+@@ -33,7 +37,7 @@ extern vm_offset_t ml_io_map(vm_offset_t, vm_size_t);
+ #define S8_G3D_GPU_ID       0x0000u
+ #define S8_G3D_L2_FEATURES  0x0004u
+ #define S8_G3D_AS_PRESENT   0x0018u
+-#define S8_G3D_SHADER       0x1000u
++#define S8_G3D_SHADER       0x0100u
+ #define S8_G3D_CORE_FEATURES 0x0008u
+ #define S8_G3D_TILER_FEATURES 0x000cu
+ #define S8_G3D_MEM_FEATURES  0x0010u
+@@ -41,6 +45,146 @@ extern vm_offset_t ml_io_map(vm_offset_t, vm_size_t);
+ #define S8_G3D_JS_PRESENT    0x001cu
+ #define S8_G3D_INT_RAWSTAT   0x0020u
+ #define S8_G3D_G71_ID        0x60a0u
++#define S8_GPU_INT_MASK      0x0028u
++#define S8_GPU_CMD           0x0030u
++#define S8_GPU_SHADER_PRESENT 0x0100u
++#define S8_GPU_L2_PRESENT    0x0120u
++#define S8_GPU_SHADER_READY  0x0140u
++#define S8_GPU_TILER_READY   0x0150u
++#define S8_GPU_L2_READY      0x0160u
++#define S8_GPU_SHADER_PWRON  0x0180u
++#define S8_GPU_TILER_PWRON   0x0190u
++#define S8_GPU_L2_PWRON      0x01a0u
++#define S8_GPU_COHERENCY     0x0304u
++#define S8_GPU_L2_MMU_CONFIG 0x0f0cu
++#define S8_GPU_JOB_RAWSTAT   0x1000u
++#define S8_GPU_JOB_CLEAR     0x1004u
++#define S8_GPU_JS1           0x1880u
++#define S8_GPU_AS0           0x2400u
++#define S8_GPU_AS_TRANSTAB_LO 0x0000u
++#define S8_GPU_AS_TRANSTAB_HI 0x0004u
++#define S8_GPU_AS_MEMATTR_LO 0x0008u
++#define S8_GPU_AS_MEMATTR_HI 0x000cu
++#define S8_GPU_AS_COMMAND    0x0018u
++#define S8_GPU_AS_STATUS     0x0028u
++#define S8_GPU_AS_TRANSCFG   0x0030u
++#define S8_GPU_RESET_DONE    (1u << 8)
++#define S8_GPU_JOB_DONE      (1u << 1)
++#define S8_GPU_COHERENCY_NONE 31u
++#define S8_GPU_MMU_EXTERNAL_LIMITS (0xfu << 24)
++
++static uint32_t s8g3d_read(vm_offset_t base, uint32_t offset);
++static void s8g3d_write(vm_offset_t base, uint32_t offset, uint32_t value);
++
++static bool
++s8g3d_wait(vm_offset_t base, uint32_t offset, uint32_t mask, uint32_t want, uint32_t iterations)
++{
++	while (iterations-- != 0) {
++		if ((s8g3d_read(base, offset) & mask) == want) {
++			return true;
++		}
++		__asm__ volatile("yield");
++	}
++	return (s8g3d_read(base, offset) & mask) == want;
++}
++
++/* Panfrost-compatible Mali job-manager smoke test: GPU writes a value to a
++ * kernel page. It proves command submission and GPU memory access, not GLES. */
++static bool
++s8g3d_job_test(vm_offset_t gpu)
++{
++	uint32_t shader = s8g3d_read(gpu, S8_GPU_SHADER_PRESENT);
++	uint32_t tiler = s8g3d_read(gpu, 0x0110u);
++	uint32_t l2 = s8g3d_read(gpu, S8_GPU_L2_PRESENT);
++	uint32_t mmu = s8g3d_read(gpu, S8_G3D_MMU_FEATURES);
++	vm_offset_t page = 0;
++	uint64_t phys;
++	volatile uint32_t *job, *target;
++	bool ok;
++
++	printf("S8-MALI: job test features shader=%#x tiler=%#x l2=%#x mmu=%#x\n", shader, tiler, l2, mmu);
++	if (shader == 0 || tiler == 0 || l2 == 0 || (mmu & 0xffu) < 36u || ((mmu >> 8) & 0xffu) < 36u) {
++		printf("S8-MALI: job test refused; GPU topology/address width unsupported\n");
++		return false;
++	}
++	if (kmem_alloc(kernel_map, &page, PAGE_SIZE, KMA_KOBJECT | KMA_ZERO | KMA_DATA,
++	    VM_KERN_MEMORY_IOKIT) != KERN_SUCCESS) {
++		printf("S8-MALI: job test refused; kernel page allocation failed\n");
++		return false;
++	}
++	phys = kvtophys(page);
++	if (phys == 0 || (phys & (PAGE_SIZE - 1)) != 0 || (phys >> 36) != 0) {
++		printf("S8-MALI: job test refused; page PA %#llx is invalid for G71\n", phys);
++		kmem_free(kernel_map, page, PAGE_SIZE);
++		return false;
++	}
++	job = (volatile uint32_t *)page;
++	target = (volatile uint32_t *)(page + 0x800);
++	job[4] = (2u << 1) | 1u | (1u << 16); /* WRITE_VALUE, 64-bit pointers, job index 1 */
++	job[8] = (uint32_t)(phys + 0x800);
++	job[9] = (uint32_t)((phys + 0x800) >> 32);
++	job[10] = 6;                         /* 32-bit immediate */
++	job[12] = 0xc0ffee01u;
++	FlushPoC_DcacheRegion(page, PAGE_SIZE);
++
++	s8g3d_write(gpu, S8_GPU_INT_MASK, 0);
++	s8g3d_write(gpu, S8_GPU_JOB_CLEAR, 0xffffffffu);
++	s8g3d_write(gpu, S8_GPU_CMD, 1u);    /* soft reset */
++	if (!s8g3d_wait(gpu, 0x0020u, S8_GPU_RESET_DONE, S8_GPU_RESET_DONE, 1000000)) {
++		printf("S8-MALI: job test stopped; G71 soft reset timed out, raw=%#x\n", s8g3d_read(gpu, 0x0020u));
++		kmem_free(kernel_map, page, PAGE_SIZE);
++		return false;
++	}
++	s8g3d_write(gpu, 0x0024u, 0xffffffffu);
++	s8g3d_write(gpu, S8_GPU_COHERENCY, S8_GPU_COHERENCY_NONE);
++	s8g3d_write(gpu, S8_GPU_L2_MMU_CONFIG,
++	    s8g3d_read(gpu, S8_GPU_L2_MMU_CONFIG) & ~S8_GPU_MMU_EXTERNAL_LIMITS);
++
++	s8g3d_write(gpu, S8_GPU_L2_PWRON, l2);
++	if (!s8g3d_wait(gpu, S8_GPU_L2_READY, l2, l2, 500000)) goto core_timeout;
++	s8g3d_write(gpu, S8_GPU_SHADER_PWRON, shader);
++	if (!s8g3d_wait(gpu, S8_GPU_SHADER_READY, shader, shader, 500000)) goto core_timeout;
++	s8g3d_write(gpu, S8_GPU_TILER_PWRON, tiler);
++	if (!s8g3d_wait(gpu, S8_GPU_TILER_READY, tiler, tiler, 500000)) goto core_timeout;
++
++	/* AS 0 in physical identity mode, then one Panfrost WRITE_VALUE job on slot 1. */
++	s8g3d_write(gpu, S8_GPU_AS0 + S8_GPU_AS_TRANSTAB_LO, 0u);
++	s8g3d_write(gpu, S8_GPU_AS0 + S8_GPU_AS_TRANSTAB_HI, 0u);
++	s8g3d_write(gpu, S8_GPU_AS0 + S8_GPU_AS_MEMATTR_LO, 0x88888888u);
++	s8g3d_write(gpu, S8_GPU_AS0 + S8_GPU_AS_MEMATTR_HI, 0x88888888u);
++	s8g3d_write(gpu, S8_GPU_AS0 + S8_GPU_AS_TRANSCFG, 2u);
++	s8g3d_write(gpu, S8_GPU_AS0 + S8_GPU_AS_TRANSCFG + 4u, 0u);
++	s8g3d_write(gpu, S8_GPU_AS0 + S8_GPU_AS_COMMAND, 1u);
++	if (!s8g3d_wait(gpu, S8_GPU_AS0 + S8_GPU_AS_STATUS, 1u, 0u, 500000)) {
++		printf("S8-MALI: job test stopped; AS0 update timed out, status=%#x\n",
++		    s8g3d_read(gpu, S8_GPU_AS0 + S8_GPU_AS_STATUS));
++		kmem_free(kernel_map, page, PAGE_SIZE);
++		return false;
++	}
++	s8g3d_write(gpu, S8_GPU_JOB_CLEAR, 0xffffffffu);
++	s8g3d_write(gpu, S8_GPU_JS1 + 0x40u, (uint32_t)phys);
++	s8g3d_write(gpu, S8_GPU_JS1 + 0x44u, (uint32_t)(phys >> 32));
++	s8g3d_write(gpu, S8_GPU_JS1 + 0x50u, shader);
++	s8g3d_write(gpu, S8_GPU_JS1 + 0x54u, 0u);
++	s8g3d_write(gpu, S8_GPU_JS1 + 0x58u, (3u << 8) | (3u << 12) | (8u << 16));
++	s8g3d_write(gpu, S8_GPU_JS1 + 0x60u, 1u);
++	(void)s8g3d_wait(gpu, S8_GPU_JOB_RAWSTAT, (1u << 1) | (1u << 17), S8_GPU_JOB_DONE, 10000000);
++	FlushPoC_DcacheRegion(page, PAGE_SIZE);
++	ok = *target == 0xc0ffee01u;
++	printf("S8-MALI: GPU WRITE_VALUE %s; irq=%#x slot=%#x value=%#x PA=%#llx\n",
++	    ok ? "PASS" : "FAIL", s8g3d_read(gpu, S8_GPU_JOB_RAWSTAT), s8g3d_read(gpu, S8_GPU_JS1 + 0x24u),
++	    *target, phys);
++	s8g3d_write(gpu, S8_GPU_JOB_CLEAR, 0xffffffffu);
++	kmem_free(kernel_map, page, PAGE_SIZE);
++	return ok;
++
++core_timeout:
++	printf("S8-MALI: job test stopped; core power-up timeout L2=%#x shader=%#x tiler=%#x\n",
++	    s8g3d_read(gpu, S8_GPU_L2_READY), s8g3d_read(gpu, S8_GPU_SHADER_READY),
++	    s8g3d_read(gpu, S8_GPU_TILER_READY));
++	kmem_free(kernel_map, page, PAGE_SIZE);
++	return false;
++}
+ 
+ static uint32_t
+ s8g3d_read(vm_offset_t base, uint32_t offset)
+@@ -101,11 +245,12 @@ s8g3d_clock_200(vm_offset_t cmu, vm_offset_t top, uint32_t pd_status, uint32_t g
+ void
+ dreamlte_mali_probe(void)
+ {
+-	uint32_t level = 0, clock_200 = 0;
++	uint32_t level = 0, clock_200 = 0, job_test = 0;
+ 	vm_offset_t pmu, cmu, top, gpu;
+ 
+ 	(void)PE_parse_boot_argn("mali_probe", &level, sizeof(level));
+ 	(void)PE_parse_boot_argn("mali_clock", &clock_200, sizeof(clock_200));
++	(void)PE_parse_boot_argn("mali_job", &job_test, sizeof(job_test));
+ 	if (level == 0) {
+ 		return;
+ 	}
+@@ -156,8 +301,9 @@ dreamlte_mali_probe(void)
+ 	    s8g3d_read(gpu, S8_G3D_L2_FEATURES),
+ 	    s8g3d_read(gpu, S8_G3D_AS_PRESENT),
+ 	    s8g3d_read(gpu, S8_G3D_SHADER));
++	bool clock_ok = false;
+ 	if (clock_200 == 200) {
+-		(void)s8g3d_clock_200(cmu, top, pd_status, gpu_id);
++		clock_ok = s8g3d_clock_200(cmu, top, pd_status, gpu_id);
+ 	}
+ 	if (level < 3) {
+ 		return;
+@@ -174,5 +320,12 @@ dreamlte_mali_probe(void)
+ 	    s8g3d_read(gpu, S8_G3D_MMU_FEATURES),
+ 	    s8g3d_read(gpu, S8_G3D_JS_PRESENT),
+ 	    s8g3d_read(gpu, S8_G3D_INT_RAWSTAT));
++	if (job_test == 1) {
++		if (!clock_ok) {
++			printf("S8-MALI: GPU job not attempted; mali_clock=200 readback guard did not pass\n");
++			return;
++		}
++		(void)s8g3d_job_test(gpu);
++	}
+ }
+ #endif /* ARM64_BOARD_CONFIG_A5XELTE */
