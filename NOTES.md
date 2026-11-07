@@ -41,11 +41,18 @@ the user returned the phone to TWRP; the diagnostic image
 `04fe9f499bb4a670dbca5b58fbed80f534d91dbb54ec324644aca268fd13f3d2`) was
 written only to `/dev/block/sda7`. Its 17-MiB prefix readback matched byte for
 byte. The 40-MiB BOOT rollback remains saved and had matched the full BOOT
-before the write. The device was rebooted after verification; physical runtime
-result and XNU clock log are pending. This is a guarded clock-route experiment,
-not evidence of GPU acceleration. The 2-GiB test image remains unflashed. See
-`DREAMLTE_PROGRESS.md` and `docs/dreamlte-gpu-port.md`. Keep images, backups
-and phone dumps out of git.
+before the write. The user reports iOS now reaches the interface much faster
+but remains laggy. A TWRP readback of the prior boot log showed SpringBoard
+executed, all four requested CPUs initialized, and only 118,643 free 4-KiB
+pages; no GPU job had run. The guarded probe recorded PMU status `0x3000f`,
+G71 ID `0x60a00001`, and matching 200-MHz route register readbacks. Its
+`shader_present` was read from the wrong offset (`0x1000`); patch `0129` fixes
+that to `0x100` and adds an opt-in G71 reset/core/job-manager test that verifies
+a GPU `WRITE_VALUE` against kernel memory. This is still a compute smoke test,
+not display acceleration. The next BOOT candidate will pair it with the full,
+firmware-free 2-GiB high bank. The full 4-GiB RAM map is non-contiguous and
+cannot be exposed by increasing `dram-size`. See `DREAMLTE_PROGRESS.md` and
+`docs/dreamlte-gpu-port.md`. Keep images, backups and phone dumps out of git.
 
 ## a5xelte fork handoff (2026-10-20)
 
