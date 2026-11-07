@@ -319,7 +319,28 @@ to the pmsg zone and read from TWRP as `/sys/fs/pstore/pmsg-ramoops-0`.
   well as the verified known 512-MiB baseline rollback. Reboot was requested;
   runtime result is pending. When back in TWRP, retrieve pmsg and the USERDATA
   console ring for `S8-MALI: GPU WRITE_VALUE PASS/FAIL`.
-- Next: use the 512-MiB boot to verify the GPU job independently of the known
-  2-GiB VM panic; then boot the 2-GiB diagnostic image and use the expanded
-  panic fields to identify the exact failed VM claim. Keep build success,
-  RAM map, GPU sentinel, GLES and accelerated composition as separate claims.
+- The next 512-MiB boot did reach iOS. After TWRP became available, the
+  USERDATA console ring was pulled read-only and decoded to `/tmp/sweetlog-now.txt`
+  (kept out of git). It confirms the exact diagnostic arguments, four CPUs,
+  SpringBoard execution, PMU `0x3000f`, G71 ID `0x60a00001`, the 200-MHz clock
+  readbacks, and `S8-MALI: GPU WRITE_VALUE PASS; irq=0x2 slot=0
+  value=0xc0ffee01 PA=0x883ade000`. The one-shot G71 job path and GPU memory
+  write are therefore runtime-verified on the phone.
+- The user's screen report remains that iOS is very sluggish and shows no GPU
+  acceleration. That is consistent with the present code: the smoke test is
+  not a renderer. There is still no persistent Mali job/MMU/buffer driver,
+  GLES userspace transport, or accelerated SpringBoard compositor.
+- The phone is currently enumerated by the host as TWRP/recovery, despite the
+  user's report that it had reached iOS. Current BOOT p7 was read-only dumped
+  again and matches the complete post-write image (40 MiB, SHA-256
+  `44c139697b87255d958c4a5dbb03f27b4eb8cacf003a174b12aa4e747535631f`). The
+  pstore pmsg currently belongs to TWRP; the USERDATA ring contains the
+  successful preceding iOS boot. No restart or partition write was performed
+  during this log collection.
+- Next: start a real rendering path by porting the S9 HakiosMali/Panfrost
+  request interface against this fork's IOKit and IOSurface APIs, while
+  adapting the Mali register, MMU, memory, cache and interrupt work for G71 /
+  Exynos 8895. Keep existing software rendering as fallback. Do not call the
+  one-shot job result UI acceleration. RAM above 512 MiB remains a separate
+  issue: both 2-GiB trials panicked in `kmem_range_init`; the new 0130
+  diagnostic image remains unflashed.
